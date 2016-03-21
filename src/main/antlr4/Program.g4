@@ -5,11 +5,11 @@ program
     ;
 
 expression
-    : B
-    | Z
-    | ID
+    : boolConst
+    | intConst
+    | variable
     | assignmentExpr
-    | ID '(' expressionList? ')'
+    | functionCall
     | '(' expression ')'
     | ('+' | '-') expression
     | expression ('*' | '/' | '%') expression
@@ -19,7 +19,11 @@ expression
     ;
 
 assignmentExpr
-    : <assoc=right> ID '=' expression
+    : <assoc=right> variable '=' expression
+    ;
+
+functionCall
+    : function '(' expressionList? ')'
     ;
 
 expressionList
@@ -28,12 +32,20 @@ expressionList
 
 statement
     : expression ';'
-    | 'if' '(' expression ')' block 'else' block
-    | 'while' '(' expression ')' block
+    | ifStmt
+    | whileStmt
+    ;
+
+ifStmt
+    : 'if' '(' expression ')' block 'else' block
+    ;
+
+whileStmt
+    : 'while' '(' expression ')' block
     ;
 
 functionDef
-    : ID ID '(' parameterList? ')' block
+    : type function '(' parameterList? ')' block
     ;
 
 block
@@ -41,12 +53,18 @@ block
     ;
 
 parameter
-    : ID ID
+    : type variable
     ;
 
 parameterList
     : parameter (',' parameter)*
     ;
+
+boolConst   : B ;
+intConst    : Z ;
+variable    : ID ;
+type        : ID ;
+function    : ID ;
 
 Z       : [+-]?[1-9][0-9]* ;
 B       : ('true' | 'false') ;
