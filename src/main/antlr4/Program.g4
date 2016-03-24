@@ -29,6 +29,7 @@ expressionList
 
 statement
     : expression ';'                                #exprStmt
+    | ID ID (',' ID)* ';'                           #varDecl
     | 'if' '(' expression ')' block 'else' block    #ifStmt
     | 'while' '(' expression ')' block              #whileStmt
     ;
@@ -53,3 +54,4 @@ Z       : [+-]?[1-9][0-9]* ;
 B       : ('true' | 'false') ;
 ID      : [_a-zA-Z][-_a-zA-Z0-9]* ;
 WS      : [ \t\r\n]+ -> skip ;   // skip spaces, tabs, newlines
+Comment : '//' ~('\r' | '\n')* -> skip;
