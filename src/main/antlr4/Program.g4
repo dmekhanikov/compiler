@@ -5,17 +5,18 @@ program
     ;
 
 expression
-    : B
-    | Z
-    | ID
-    | assignmentExpr
-    | ID '(' expressionList? ')'
-    | '(' expression ')'
-    | ('+' | '-') expression
-    | expression ('*' | '/' | '%') expression
-    | expression ('-' | '+') expression
-    | expression ('==' | '!=' | '<=' | '>=' | '<' | '>') expression
-    | expression ('&&' | '||') expression
+    : B                                         #boolConst
+    | Z                                         #intConst
+    | ID                                        #variable
+    | assignmentExpr                            #assignment
+    | ID '(' expressionList? ')'                #functionCall
+    | '(' expression ')'                        #parens
+    | ('+' | '-') expression                    #signedExpr
+    | expression ('*' | '/' | '%') expression   #mulDiv
+    | expression ('-' | '+') expression         #sum
+    | expression ('==' | '!=' | '<=' | '>='
+                       | '<' | '>') expression  #comparison
+    | expression ('&&' | '||') expression       #junction
     ;
 
 assignmentExpr
@@ -27,9 +28,9 @@ expressionList
     ;
 
 statement
-    : expression ';'
-    | 'if' '(' expression ')' block 'else' block
-    | 'while' '(' expression ')' block
+    : expression ';'                                #exprStmt
+    | 'if' '(' expression ')' block 'else' block    #ifStmt
+    | 'while' '(' expression ')' block              #whileStmt
     ;
 
 functionDef
