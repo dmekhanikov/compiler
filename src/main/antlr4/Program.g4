@@ -11,12 +11,11 @@ expression
     | assignmentExpr                            #assignment
     | ID '(' expressionList? ')'                #functionCall
     | '(' expression ')'                        #parens
-    | ('+' | '-') expression                    #signedExpr
-    | expression ('*' | '/' | '%') expression   #mulDiv
-    | expression ('-' | '+') expression         #sum
-    | expression ('==' | '!=' | '<=' | '>='
-                       | '<' | '>') expression  #comparison
-    | expression ('&&' | '||') expression       #junction
+    | SIGN expression                           #signedExpr
+    | expression MULDIV expression              #mulDiv
+    | expression SIGN expression                #sum
+    | expression CMP expression                 #comparison
+    | expression JUNCTION expression            #junction
     ;
 
 assignmentExpr
@@ -53,5 +52,9 @@ parameterList
 Z       : [+-]?[1-9][0-9]* ;
 B       : ('true' | 'false') ;
 ID      : [_a-zA-Z][-_a-zA-Z0-9]* ;
+SIGN    : [+-] ;
+MULDIV  : [*/%] ;
+CMP     : ('==' | '!=' | '<=' | '>=' | '<' | '>') ;
+JUNCTION: ('&&' | '||') ;
 WS      : [ \t\r\n]+ -> skip ;   // skip spaces, tabs, newlines
 Comment : '//' ~('\r' | '\n')* -> skip;
