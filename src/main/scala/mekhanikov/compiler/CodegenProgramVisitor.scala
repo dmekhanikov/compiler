@@ -8,7 +8,7 @@ import org.bytedeco.javacpp.{BytePointer, Pointer, PointerPointer}
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 
-class CodegenProgramListener extends ProgramBaseListener {
+class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
 
   private val MAIN_METHOD_NAME = "main"
   private val MODULE_NAME = "module"
@@ -17,7 +17,6 @@ class CodegenProgramListener extends ProgramBaseListener {
   private var main: LLVMValueRef = null // only one function is supported for now
   private var entry: LLVMBasicBlockRef = null
   private var builder: LLVMBuilderRef = null
-  private var expressionValues: List[(String, LLVMValueRef)] = null  // (typeName, valueRef)
   private var variables: mutable.HashMap[String, (String, LLVMValueRef)] = null  // name -> (typename, value)
 
   private var numberFormat: LLVMValueRef = null
@@ -41,23 +40,22 @@ class CodegenProgramListener extends ProgramBaseListener {
     numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
   }
 
-  override def enterProgram(ctx: ProgramContext): Unit = {
+  override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef) = {
     module = LLVMModuleCreateWithName(MODULE_NAME)
     main = initMain()
     entry = LLVMAppendBasicBlock(main, "entry")
     builder = LLVMCreateBuilder
     LLVMPositionBuilderAtEnd(builder, entry)
     initIO()
-    expressionValues = List()
     variables = mutable.HashMap()
-  }
+    ctx.functionDef.foreach((fDefCtx: FunctionDefContext) => visit(fDefCtx))
 
-  override def exitProgram(ctx: ProgramContext): Unit = {
     LLVMBuildRetVoid(builder)
     LLVMDumpModule(module)
     val error = new BytePointer(null: Pointer)
     LLVMVerifyModule(module, LLVMAbortProcessAction, error)
     LLVMDisposeMessage(error)
+    (null, null)
   }
 
   private def initMain(): LLVMValueRef = {
@@ -66,19 +64,19 @@ class CodegenProgramListener extends ProgramBaseListener {
     main
   }
 
-  override def enterBoolConst(ctx: BoolConstContext): Unit = {
+  override def visitBoolConst(ctx: BoolConstContext): (String, LLVMValueRef) = {
     val value = ctx.B.getSymbol.getText.toBoolean
     val valueRef = LLVMConstInt(LLVMInt1Type(), if (value) 1 else 0, 0)
-    expressionValues = (Types.BOOLEAN, valueRef) :: expressionValues
+    (Types.BOOLEAN, valueRef)
   }
 
-  override def enterIntConst(ctx: IntConstContext): Unit = {
+  override def visitIntConst(ctx: IntConstContext): (String, LLVMValueRef) = {
     val value = ctx.Z.getSymbol.getText.toInt
     val valueRef = LLVMConstInt(LLVMInt32Type(), value, 0)
-    expressionValues = (Types.INT, valueRef) :: expressionValues
+    (Types.INT, valueRef)
   }
 
-  override def enterVarDecl(ctx: VarDeclContext): Unit = {
+  override def visitVarDecl(ctx: VarDeclContext): (String, LLVMValueRef) = {
     val typeName = ctx.ID(0).getSymbol.getText
     if (!List(Types.INT, Types.BOOLEAN).contains(typeName)) {
       throw new CompilationException(ctx, s"no such type: $typeName")
@@ -88,9 +86,10 @@ class CodegenProgramListener extends ProgramBaseListener {
       .foreach { varName =>
         variables += (varName -> (typeName, null))
       }
+    (null, null)
   }
 
-  override def enterVariable(ctx: VariableContext): Unit = {
+  override def visitVariable(ctx: VariableContext): (String, LLVMValueRef) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
     if (!variables.containsKey(varName)) {
@@ -100,18 +99,19 @@ class CodegenProgramListener extends ProgramBaseListener {
     if (value == null) {
       throw new CompilationException(ctx, s"variable $varName is not initialized")
     }
-    expressionValues = (typeName, value) :: expressionValues
+    (typeName, value)
   }
 
-  override def exitAssignmentExpr(ctx: AssignmentExprContext): Unit = {
+  override def visitAssignmentExpr(ctx: AssignmentExprContext): (String, LLVMValueRef) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
     val (typeName, _) = variables(varName)
-    val (exprTypeName, value) = expressionValues.head
+    val (exprTypeName, value) = visit(ctx.expression)
     if (typeName != exprTypeName) {
       throw new CompilationException(ctx, s"incompatible types: ($typeName, $exprTypeName)")
     }
     variables(varName) = (typeName, value)
+    (typeName, value)
   }
 
   def checkVariableExists(varName: String, ctx: ParserRuleContext): Unit = {
@@ -120,14 +120,12 @@ class CodegenProgramListener extends ProgramBaseListener {
     }
   }
 
-  override def exitFunctionCall(ctx: FunctionCallContext): Unit = {
+  override def visitFunctionCall(ctx: FunctionCallContext): (String, LLVMValueRef) = {
     val functionName = ctx.ID.getSymbol.getText
-    val argumentsCount = ctx.expressionList.expression.size
-    val arguments = expressionValues.take(argumentsCount)
-    expressionValues = expressionValues.drop(argumentsCount)
+    val arguments = ctx.expressionList.expression.map((exprCtx) => visit(exprCtx))
     functionName match {
       case "print" =>
-        if (argumentsCount != 1) {
+        if (arguments.size != 1) {
           throw new CompilationException(ctx, "wrong number of arguments")
         }
         val (_, value) = arguments.head
@@ -135,25 +133,30 @@ class CodegenProgramListener extends ProgramBaseListener {
         val printf = LLVMGetNamedFunction(module, "printf")
         LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, generateName("print"))
     }
+    (null, null)
   }
 
-  override def exitExprStmt(ctx: ExprStmtContext): Unit = {
-    expressionValues = List()
-  }
-
-  override def exitSum(ctx: SumContext): Unit = {
-    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
+  override def visitSum(ctx: SumContext): (String, LLVMValueRef) = {
+    val (leftType, left) = visit(ctx.expression(0))
+    val (rightType, right) = visit(ctx.expression(1))
+    if (leftType != Types.INT || rightType != Types.INT) {
+      throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
+    }
     val result = ctx.SIGN.getSymbol.getText match {
       case "+" =>
         LLVMBuildAdd(builder, left, right, generateName("add"))
       case "-" =>
         LLVMBuildSub(builder, left, right, generateName("sub"))
     }
-    expressionValues = (Types.INT, result) :: expressionValues
+    (Types.INT, result)
   }
 
-  override def exitMulDiv(ctx: MulDivContext): Unit = {
-    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
+  override def visitMulDiv(ctx: MulDivContext): (String, LLVMValueRef) = {
+    val (leftType, left) = visit(ctx.expression(0))
+    val (rightType, right) = visit(ctx.expression(1))
+    if (leftType != Types.INT || rightType != Types.INT) {
+      throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
+    }
     val result = ctx.MULDIV.getSymbol.getText match {
       case "*" =>
         LLVMBuildMul(builder, left, right, generateName("mul"))
@@ -162,30 +165,36 @@ class CodegenProgramListener extends ProgramBaseListener {
       case "%" =>
         LLVMBuildSRem(builder, left, right, generateName("mod"))
     }
-    expressionValues = (Types.INT, result) :: expressionValues
+    (Types.INT, result)
   }
 
-  override def exitSignedExpr(ctx: SignedExprContext): Unit = {
-    if (ctx.SIGN.getSymbol.getText == "-") {
-      val (typeName, value) = expressionValues.head
-      if (typeName != Types.INT) {
-        throw new CompilationException(ctx, s"invalid operand type: $typeName")
-      }
-      val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
-      val resultValue = LLVMBuildSub(builder, zero, value, generateName("sub"))
-      expressionValues = (typeName, resultValue) :: expressionValues.drop(1)
+  override def visitSignedExpr(ctx: SignedExprContext): (String, LLVMValueRef) = {
+    val (typeName, value) = visit(ctx.expression)
+    if (typeName != Types.INT) {
+      throw new CompilationException(ctx, s"invalid operand type: $typeName")
     }
+    val resultValue = if (ctx.SIGN.getSymbol.getText == "-") {
+      val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
+      LLVMBuildSub(builder, zero, value, generateName("sub"))
+    } else {
+      value
+    }
+    (typeName, resultValue)
   }
 
-  override def exitComparison(ctx: ComparisonContext): Unit = {
+  override def visitComparison(ctx: ComparisonContext): (String, LLVMValueRef) = {
     val operator: String = ctx.CMP().getSymbol.getText
+    val (leftType, left) = visit(ctx.expression(0))
+    val (rightType, right) = visit(ctx.expression(1))
     val typesConform = operator match {
       case "==" | "!=" =>
         (lt: String, rt: String) => lt == rt
       case _ =>
         (lt: String, rt: String) => lt == Types.INT && rt == Types.INT
     }
-    val (left, right) = getOperands(ctx, typesConform)
+    if (!typesConform(leftType, rightType)) {
+      throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
+    }
     val predicate = operator match {
       case "==" => LLVMIntEQ
       case "!=" => LLVMIntNE
@@ -195,27 +204,20 @@ class CodegenProgramListener extends ProgramBaseListener {
       case ">=" => LLVMIntSGE
     }
     val result = LLVMBuildICmp(builder, predicate, left, right, generateName("cmp"))
-    expressionValues = (Types.BOOLEAN, result) :: expressionValues
+    (Types.BOOLEAN, result)
   }
 
-  override def exitJunction(ctx: JunctionContext): Unit = {
-    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
+  override def visitJunction(ctx: JunctionContext): (String, LLVMValueRef) = {
+    val (leftType, left) = visit(ctx.expression(0))
+    val (rightType, right) = visit(ctx.expression(1))
+    if (leftType != Types.INT || rightType != Types.INT) {
+      throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
+    }
     val operator = ctx.JUNCTION.getSymbol.getText
     val result = operator match {
       case "&&" => LLVMBuildAnd(builder, left, right, generateName("and"))
       case "||" => LLVMBuildOr(builder, left, right, generateName("or"))
     }
-    expressionValues = (Types.BOOLEAN, result) :: expressionValues
-  }
-
-  private def getOperands(ctx: ParserRuleContext,
-                          typesConform: (String, String) => Boolean): (LLVMValueRef, LLVMValueRef) = {
-    val (rightType, right) = expressionValues.head
-    val (leftType, left) = expressionValues(1)
-    if (!typesConform(leftType, rightType)) {
-      throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
-    }
-    expressionValues = expressionValues.drop(2)
-    (left, right)
+    (Types.BOOLEAN, result)
   }
 }

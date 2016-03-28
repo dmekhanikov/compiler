@@ -8,9 +8,8 @@ object Compiler {
 
   def compile(fileName: String): Unit = {
     val tree = parse(fileName)
-    val walker = new ParseTreeWalker()
-    val listener = new CodegenProgramListener()
-    walker.walk(listener, tree)
+    val visitor = new CodegenProgramVisitor()
+    visitor.visit(tree)
   }
 
   def parse(fileName: String): ProgramContext = {
