@@ -138,7 +138,7 @@ class CodegenProgramListener extends ProgramBaseListener {
   }
 
   override def exitSum(ctx: SumContext): Unit = {
-    val (left, right) = getOperands(Types.INT, ctx)
+    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
     val result = ctx.SIGN.getSymbol.getText match {
       case "+" =>
         LLVMBuildAdd(builder, left, right, generateName("add"))
@@ -149,7 +149,7 @@ class CodegenProgramListener extends ProgramBaseListener {
   }
 
   override def exitMulDiv(ctx: MulDivContext): Unit = {
-    val (left, right) = getOperands(Types.INT, ctx)
+    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
     val result = ctx.MULDIV.getSymbol.getText match {
       case "*" =>
         LLVMBuildMul(builder, left, right, generateName("mul"))
@@ -173,10 +173,32 @@ class CodegenProgramListener extends ProgramBaseListener {
     }
   }
 
-  private def getOperands(expectedType: String, ctx: ParserRuleContext): (LLVMValueRef, LLVMValueRef) = {
+  override def exitComparison(ctx: ComparisonContext): Unit = {
+    val operator: String = ctx.CMP().getSymbol.getText
+    val typesConform = operator match {
+      case "==" | "!=" =>
+        (lt: String, rt: String) => lt == rt
+      case _ =>
+        (lt: String, rt: String) => lt == Types.INT && rt == Types.INT
+    }
+    val (left, right) = getOperands(ctx, typesConform)
+    val predicate = operator match {
+      case "==" => LLVMIntEQ
+      case "!=" => LLVMIntNE
+      case "<"  => LLVMIntSLT
+      case "<=" => LLVMIntSLE
+      case ">"  => LLVMIntSGT
+      case ">=" => LLVMIntSGE
+    }
+    val result = LLVMBuildICmp(builder, predicate, left, right, generateName("cmp"))
+    expressionValues = (Types.BOOLEAN, result) :: expressionValues
+  }
+
+  private def getOperands(ctx: ParserRuleContext,
+                          typesConform: (String, String) => Boolean): (LLVMValueRef, LLVMValueRef) = {
     val (rightType, right) = expressionValues.head
     val (leftType, left) = expressionValues(1)
-    if (leftType != expectedType || rightType != expectedType) { // no autocasting
+    if (!typesConform(leftType, rightType)) {
       throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
     }
     expressionValues = expressionValues.drop(2)
