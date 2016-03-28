@@ -106,8 +106,12 @@ class CodegenProgramListener extends ProgramBaseListener {
   override def exitAssignmentExpr(ctx: AssignmentExprContext): Unit = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
-    val value = expressionValues.head
-    variables.put(varName, value)
+    val (typeName, _) = variables(varName)
+    val (exprTypeName, value) = expressionValues.head
+    if (typeName != exprTypeName) {
+      throw new CompilationException(ctx, s"incompatible types: ($typeName, $exprTypeName)")
+    }
+    variables(varName) = (typeName, value)
   }
 
   def checkVariableExists(varName: String, ctx: ParserRuleContext): Unit = {
