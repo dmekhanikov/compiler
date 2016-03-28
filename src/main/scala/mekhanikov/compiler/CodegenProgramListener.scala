@@ -80,6 +80,9 @@ class CodegenProgramListener extends ProgramBaseListener {
 
   override def enterVarDecl(ctx: VarDeclContext): Unit = {
     val typeName = ctx.ID(0).getSymbol.getText
+    if (!List(Types.INT, Types.BOOLEAN).contains(typeName)) {
+      throw new CompilationException(ctx, s"no such type: $typeName")
+    }
     ctx.ID.subList(1, ctx.ID.size)
       .map { node => node.getSymbol.getText }
       .foreach { varName =>
