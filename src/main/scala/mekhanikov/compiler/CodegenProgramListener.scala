@@ -194,6 +194,16 @@ class CodegenProgramListener extends ProgramBaseListener {
     expressionValues = (Types.BOOLEAN, result) :: expressionValues
   }
 
+  override def exitJunction(ctx: JunctionContext): Unit = {
+    val (left, right) = getOperands(ctx, (lt: String, rt: String) => lt == Types.INT && rt == Types.INT)
+    val operator = ctx.JUNCTION.getSymbol.getText
+    val result = operator match {
+      case "&&" => LLVMBuildAnd(builder, left, right, generateName("and"))
+      case "||" => LLVMBuildOr(builder, left, right, generateName("or"))
+    }
+    expressionValues = (Types.BOOLEAN, result) :: expressionValues
+  }
+
   private def getOperands(ctx: ParserRuleContext,
                           typesConform: (String, String) => Boolean): (LLVMValueRef, LLVMValueRef) = {
     val (rightType, right) = expressionValues.head
