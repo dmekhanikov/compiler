@@ -8,7 +8,9 @@ import org.bytedeco.javacpp.{BytePointer, Pointer, PointerPointer}
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 
-class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
+// return type: (typeName, valueRef, Map[varName -> varValueRef])
+// Map contains assigned variables in that block of code
+class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef, Map[String, LLVMValueRef])] {
 
   private val MAIN_METHOD_NAME = "main"
   private val MODULE_NAME = "module"
@@ -40,7 +42,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
   }
 
-  override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef) = {
+  override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     module = LLVMModuleCreateWithName(MODULE_NAME)
     main = initMain()
     entry = LLVMAppendBasicBlock(main, "entry")
@@ -55,7 +57,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     val error = new BytePointer(null: Pointer)
     LLVMVerifyModule(module, LLVMAbortProcessAction, error)
     LLVMDisposeMessage(error)
-    (null, null)
+    null
   }
 
   private def initMain(): LLVMValueRef = {
@@ -64,19 +66,19 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     main
   }
 
-  override def visitBoolConst(ctx: BoolConstContext): (String, LLVMValueRef) = {
+  override def visitBoolConst(ctx: BoolConstContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val value = ctx.B.getSymbol.getText.toBoolean
     val valueRef = LLVMConstInt(LLVMInt1Type(), if (value) 1 else 0, 0)
-    (Types.BOOLEAN, valueRef)
+    (Types.BOOLEAN, valueRef, Map())
   }
 
-  override def visitIntConst(ctx: IntConstContext): (String, LLVMValueRef) = {
+  override def visitIntConst(ctx: IntConstContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val value = ctx.Z.getSymbol.getText.toInt
     val valueRef = LLVMConstInt(LLVMInt32Type(), value, 0)
-    (Types.INT, valueRef)
+    (Types.INT, valueRef, Map())
   }
 
-  override def visitVarDecl(ctx: VarDeclContext): (String, LLVMValueRef) = {
+  override def visitVarDecl(ctx: VarDeclContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val typeName = ctx.ID(0).getSymbol.getText
     if (!List(Types.INT, Types.BOOLEAN).contains(typeName)) {
       throw new CompilationException(ctx, s"no such type: $typeName")
@@ -86,10 +88,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       .foreach { varName =>
         variables += (varName -> (typeName, null))
       }
-    (null, null)
+    (null, null, Map())
   }
 
-  override def visitVariable(ctx: VariableContext): (String, LLVMValueRef) = {
+  override def visitVariable(ctx: VariableContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
     if (!variables.containsKey(varName)) {
@@ -99,19 +101,20 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     if (value == null) {
       throw new CompilationException(ctx, s"variable $varName is not initialized")
     }
-    (typeName, value)
+    (typeName, value, Map())
   }
 
-  override def visitAssignmentExpr(ctx: AssignmentExprContext): (String, LLVMValueRef) = {
+  override def visitAssignmentExpr(ctx: AssignmentExprContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
     val (typeName, _) = variables(varName)
-    val (exprTypeName, value) = visit(ctx.expression)
+    var (exprTypeName, value, assigned) = visit(ctx.expression)
     if (typeName != exprTypeName) {
       throw new CompilationException(ctx, s"incompatible types: ($typeName, $exprTypeName)")
     }
     variables(varName) = (typeName, value)
-    (typeName, value)
+    assigned += (varName -> value)
+    (typeName, value, assigned)
   }
 
   def checkVariableExists(varName: String, ctx: ParserRuleContext): Unit = {
@@ -120,7 +123,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     }
   }
 
-  override def visitFunctionCall(ctx: FunctionCallContext): (String, LLVMValueRef) = {
+  override def visitFunctionCall(ctx: FunctionCallContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val functionName = ctx.ID.getSymbol.getText
     val arguments = ctx.expressionList.expression.map((exprCtx) => visit(exprCtx))
     functionName match {
@@ -128,17 +131,18 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
         if (arguments.size != 1) {
           throw new CompilationException(ctx, "wrong number of arguments")
         }
-        val (_, value) = arguments.head
+        val value = arguments.head._2
         val printfArgs = Array(numberFormat, value)
         val printf = LLVMGetNamedFunction(module, "printf")
         LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, generateName("print"))
     }
-    (null, null)
+    val assigned = arguments.map {result => result._3}.foldLeft(Map[String, LLVMValueRef]()) {(a, r) => r ++ a}
+    (null, null, assigned)
   }
 
-  override def visitSum(ctx: SumContext): (String, LLVMValueRef) = {
-    val (leftType, left) = visit(ctx.expression(0))
-    val (rightType, right) = visit(ctx.expression(1))
+  override def visitSum(ctx: SumContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    var (leftType, left, leftAssigned) = visit(ctx.expression(0))
+    val (rightType, right, rightAssigned) = visit(ctx.expression(1))
     if (leftType != Types.INT || rightType != Types.INT) {
       throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
     }
@@ -148,12 +152,13 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       case "-" =>
         LLVMBuildSub(builder, left, right, generateName("sub"))
     }
-    (Types.INT, result)
+    leftAssigned ++= rightAssigned
+    (Types.INT, result, leftAssigned)
   }
 
-  override def visitMulDiv(ctx: MulDivContext): (String, LLVMValueRef) = {
-    val (leftType, left) = visit(ctx.expression(0))
-    val (rightType, right) = visit(ctx.expression(1))
+  override def visitMulDiv(ctx: MulDivContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    var (leftType, left, leftAssigned) = visit(ctx.expression(0))
+    val (rightType, right, rightAssigned) = visit(ctx.expression(1))
     if (leftType != Types.INT || rightType != Types.INT) {
       throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
     }
@@ -165,11 +170,12 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       case "%" =>
         LLVMBuildSRem(builder, left, right, generateName("mod"))
     }
-    (Types.INT, result)
+    leftAssigned ++= rightAssigned
+    (Types.INT, result, leftAssigned)
   }
 
-  override def visitSignedExpr(ctx: SignedExprContext): (String, LLVMValueRef) = {
-    val (typeName, value) = visit(ctx.expression)
+  override def visitSignedExpr(ctx: SignedExprContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    val (typeName, value, assigned) = visit(ctx.expression)
     if (typeName != Types.INT) {
       throw new CompilationException(ctx, s"invalid operand type: $typeName")
     }
@@ -179,13 +185,13 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     } else {
       value
     }
-    (typeName, resultValue)
+    (typeName, resultValue, assigned)
   }
 
-  override def visitComparison(ctx: ComparisonContext): (String, LLVMValueRef) = {
+  override def visitComparison(ctx: ComparisonContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val operator: String = ctx.CMP().getSymbol.getText
-    val (leftType, left) = visit(ctx.expression(0))
-    val (rightType, right) = visit(ctx.expression(1))
+    var (leftType, left, leftAssigned) = visit(ctx.expression(0))
+    val (rightType, right, rightAssigned) = visit(ctx.expression(1))
     val typesConform = operator match {
       case "==" | "!=" =>
         (lt: String, rt: String) => lt == rt
@@ -204,12 +210,13 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       case ">=" => LLVMIntSGE
     }
     val result = LLVMBuildICmp(builder, predicate, left, right, generateName("cmp"))
-    (Types.BOOLEAN, result)
+    leftAssigned ++= rightAssigned
+    (Types.BOOLEAN, result, leftAssigned)
   }
 
-  override def visitJunction(ctx: JunctionContext): (String, LLVMValueRef) = {
-    val (leftType, left) = visit(ctx.expression(0))
-    val (rightType, right) = visit(ctx.expression(1))
+  override def visitJunction(ctx: JunctionContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    var (leftType, left, leftAssigned) = visit(ctx.expression(0))
+    val (rightType, right, rightAssigned) = visit(ctx.expression(1))
     if (leftType != Types.INT || rightType != Types.INT) {
       throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
     }
@@ -218,6 +225,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       case "&&" => LLVMBuildAnd(builder, left, right, generateName("and"))
       case "||" => LLVMBuildOr(builder, left, right, generateName("or"))
     }
-    (Types.BOOLEAN, result)
+    leftAssigned ++= rightAssigned
+    (Types.BOOLEAN, result, leftAssigned)
   }
 }

@@ -1,7 +1,6 @@
 package mekhanikov.compiler
 
 import mekhanikov.compiler.ProgramParser.ProgramContext
-import org.antlr.v4.runtime.tree.ParseTreeWalker
 import org.antlr.v4.runtime.{ANTLRFileStream, ANTLRInputStream, CommonTokenStream}
 
 object Compiler {
