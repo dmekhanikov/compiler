@@ -136,7 +136,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef, Ma
         val printf = LLVMGetNamedFunction(module, "printf")
         LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, generateName("print"))
     }
-    val assigned = arguments.map {result => result._3}.foldLeft(Map[String, LLVMValueRef]()) {(a, r) => r ++ a}
+    val assigned = collectAssignments(arguments)
     (null, null, assigned)
   }
 
@@ -227,5 +227,61 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef, Ma
     }
     leftAssigned ++= rightAssigned
     (Types.BOOLEAN, result, leftAssigned)
+  }
+
+  override def visitIfStmt(ctx: IfStmtContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    val thenBlock = LLVMAppendBasicBlock(main, generateName("ifTrue"))
+    val elseBlock = LLVMAppendBasicBlock(main, generateName("ifFalse"))
+    val endIf = LLVMAppendBasicBlock(main, generateName("endIf"))
+    val (condType, condition, conditionAssigned) = visit(ctx.expression)
+    if (condType != Types.BOOLEAN) {
+      throw new CompilationException(ctx, s"$condType type cannot be used in conditions")
+    }
+
+    // then branch
+    LLVMBuildCondBr(builder, condition, thenBlock, elseBlock)
+    LLVMPositionBuilderAtEnd(builder, thenBlock)
+    val thenAssigned = visit(ctx.block(0))._3
+    LLVMBuildBr(builder, endIf)
+
+    // else branch
+    LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(main)) // ordering the blocks
+    LLVMPositionBuilderAtEnd(builder, elseBlock)
+    val elseAssigned = visit(ctx.block(1))._3
+    LLVMBuildBr(builder, endIf)
+
+    LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(main))     // ordering the blocks
+    val lastThenBlock = LLVMGetPreviousBasicBlock(elseBlock)
+    val lastElseBlock = LLVMGetPreviousBasicBlock(endIf)
+    LLVMPositionBuilderAtEnd(builder, endIf)
+    var totalAssigned = conditionAssigned ++ thenAssigned ++ elseAssigned
+    for (varName <- thenAssigned.keySet & elseAssigned.keySet) {
+      val varType = variables(varName)._1
+      val varTypeRef = Types.toTypeRef(varType)
+      val phi = LLVMBuildPhi(builder, varTypeRef, generateName("phi"))
+      val thenValue = thenAssigned(varName)
+      val elseValue = elseAssigned(varName)
+      val phiVals = new PointerPointer(thenValue, elseValue)
+      val phiBlocks = new PointerPointer(lastThenBlock, lastElseBlock)
+      LLVMAddIncoming(phi, phiVals, phiBlocks, 2)
+      variables += (varName -> (varType, phi))
+      totalAssigned += (varName -> phi)
+    }
+    (null, null, totalAssigned)
+  }
+
+  override def visitBlock(ctx: BlockContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    val results = ctx.statement.map(stmt => visit(stmt))
+    val assigned = collectAssignments(results)
+    (null, null, assigned)
+  }
+
+  override def visitExprStmt(ctx: ExprStmtContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    visit(ctx.expression)
+  }
+
+  private def collectAssignments(results: Seq[(String, LLVMValueRef, Map[String, LLVMValueRef])]): Map[String, LLVMValueRef] = {
+    val assignmentsList = results.map(result => result._3)
+    assignmentsList.foldLeft(Map[String, LLVMValueRef]()) {(a, r) => r ++ a}
   }
 }
