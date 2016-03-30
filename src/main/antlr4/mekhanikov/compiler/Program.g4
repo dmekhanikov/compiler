@@ -28,13 +28,19 @@ expressionList
 
 statement
     : expression ';'                                #exprStmt
-    | ID ID (',' ID)* ';'                           #varDecl
     | 'if' '(' expression ')' block 'else' block    #ifStmt
     | 'while' '(' expression ')' block              #whileStmt
     ;
 
 functionDef
-    : ID ID '(' parameterList? ')' block
+    : ID ID '(' parameterList? ')' '{'
+        varDecl*
+        statement*
+      '}'
+    ;
+
+varDecl
+    : ID ID (',' ID)* ';'
     ;
 
 block
