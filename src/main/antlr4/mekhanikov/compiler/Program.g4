@@ -49,7 +49,7 @@ parameterList
     : parameter (',' parameter)*
     ;
 
-Z       : [+-]?[1-9][0-9]* ;
+Z       : [+-]?('0'|[1-9][0-9]*) ;
 B       : ('true' | 'false') ;
 ID      : [_a-zA-Z][-_a-zA-Z0-9]* ;
 SIGN    : [+-] ;
