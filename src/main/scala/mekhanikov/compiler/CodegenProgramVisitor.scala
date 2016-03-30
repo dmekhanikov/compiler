@@ -270,6 +270,55 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef, Ma
     (null, null, totalAssigned)
   }
 
+  override def visitWhileStmt(ctx: WhileStmtContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
+    val whileHead = LLVMAppendBasicBlock(main, generateName("whileHead"))
+    val whileBody = LLVMAppendBasicBlock(main, generateName("whileBody"))
+    val whileEnd = LLVMAppendBasicBlock(main, generateName("whileEnd"))
+    val previousBlock = LLVMGetPreviousBasicBlock(whileHead)
+    LLVMBuildBr(builder, whileHead)
+
+    // find all assignments and replace variables' values with phi
+    val assignmentSearchVisitor = new AssignmentSearchVisitor()
+    val assignedVarNames = assignmentSearchVisitor.visit(ctx)
+    var phiVals = Map[String, LLVMValueRef]()
+    LLVMPositionBuilderAtEnd(builder, whileHead)
+    for (varName <- assignedVarNames) {
+      val (typeName, oldValue) = variables(varName)
+      val varTypeRef = Types.toTypeRef(typeName)
+      val phi = LLVMBuildPhi(builder, varTypeRef, generateName("phi"))
+      // previous value of this variable
+      LLVMAddIncoming(phi, oldValue, previousBlock, 1)
+      variables += (varName -> (typeName, phi))
+      phiVals += (varName -> phi)
+    }
+
+    // conditional jump
+    val (condType, condValue, condAssigned) = visit(ctx.expression)
+    if (condType != Types.BOOLEAN) {
+      throw new CompilationException(ctx, "$condType type cannot be used in conditions")
+    }
+    LLVMBuildCondBr(builder, condValue, whileBody, whileEnd)
+
+    // loop body
+    LLVMMoveBasicBlockAfter(whileBody, LLVMGetLastBasicBlock(main))
+    LLVMPositionBuilderAtEnd(builder, whileBody)
+    val (_, _, assigned) = visit(ctx.block())
+    LLVMBuildBr(builder, whileHead)
+
+    // assign variables PHIs that where introduced in head
+    LLVMMoveBasicBlockAfter(whileEnd, LLVMGetLastBasicBlock(main))
+    LLVMPositionBuilderAtEnd(builder, whileEnd)
+    val lastBodyBlock = LLVMGetPreviousBasicBlock(whileEnd)
+    for (varName <- assignedVarNames) {
+      val phi = phiVals(varName)
+      val (typeName, newValue) = variables(varName)
+      LLVMAddIncoming(phi, newValue, lastBodyBlock, 1)
+      variables(varName) = (typeName, phi)
+    }
+
+    (null, null, condAssigned ++ assigned)
+  }
+
   override def visitBlock(ctx: BlockContext): (String, LLVMValueRef, Map[String, LLVMValueRef]) = {
     val results = ctx.statement.map(stmt => visit(stmt))
     val assigned = collectAssignments(results)
