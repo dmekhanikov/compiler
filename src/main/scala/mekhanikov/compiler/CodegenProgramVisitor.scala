@@ -12,7 +12,8 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
 
   private val MODULE_NAME = "module"
 
-  private var module: LLVMModuleRef = null
+  private var _module: LLVMModuleRef = null
+  def module = _module
   private var builder: LLVMBuilderRef = null
   private var functionSignatures: mutable.HashMap[String, (String, List[String])] = null
   private var currentFunction: LLVMValueRef = null
@@ -32,16 +33,11 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   }
 
   override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef) = {
-    module = LLVMModuleCreateWithName(MODULE_NAME)
+    _module = LLVMModuleCreateWithName(MODULE_NAME)
     builder = LLVMCreateBuilder
     declarePrintf()
     functionSignatures = mutable.HashMap()
     ctx.functionDef.foreach((fDefCtx: FunctionDefContext) => visit(fDefCtx))
-
-    LLVMDumpModule(module)
-    val error = new BytePointer(null: Pointer)
-    LLVMVerifyModule(module, LLVMAbortProcessAction, error)
-    LLVMDisposeMessage(error)
     null
   }
 

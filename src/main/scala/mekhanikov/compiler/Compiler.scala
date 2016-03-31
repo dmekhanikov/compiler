@@ -2,6 +2,8 @@ package mekhanikov.compiler
 
 import mekhanikov.compiler.ProgramParser.ProgramContext
 import org.antlr.v4.runtime.{ANTLRFileStream, ANTLRInputStream, CommonTokenStream}
+import org.bytedeco.javacpp.{BytePointer, Pointer}
+import org.bytedeco.javacpp.LLVM._
 
 object Compiler {
 
@@ -9,6 +11,10 @@ object Compiler {
     val tree = parse(fileName)
     val visitor = new CodegenProgramVisitor()
     visitor.visit(tree)
+    LLVMDumpModule(visitor.module)
+    val error = new BytePointer(null: Pointer)
+    LLVMVerifyModule(visitor.module, LLVMAbortProcessAction, error)
+    LLVMDisposeMessage(error)
   }
 
   def parse(fileName: String): ProgramContext = {
