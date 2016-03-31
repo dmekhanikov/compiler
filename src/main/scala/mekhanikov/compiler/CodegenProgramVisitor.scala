@@ -24,11 +24,6 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
 
   private var genIndex = 0
 
-  private def generateName(prefix: String): String = {
-    genIndex += 1
-    prefix + genIndex
-  }
-
   private def declarePrintf(): Unit = {
     val i8Pointer = LLVMPointerType(LLVMInt8Type(), 0)
     val fnType = LLVMFunctionType(LLVMInt32Type(), i8Pointer, 1, 1)
@@ -180,7 +175,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
         }
         val printfArgs = Array(numberFormat, value)
         val printf = LLVMGetNamedFunction(module, "printf")
-        LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, generateName("print"))
+        LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, "print")
         (Types.VOID, null)
       case _ =>
         val function = LLVMGetNamedFunction(module, functionName)
@@ -204,7 +199,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
         } else {
           List()
         }
-        val callRes = LLVMBuildCall(builder, function, new PointerPointer(args:_*), args.size, generateName("call"))
+        val callRes = LLVMBuildCall(builder, function, new PointerPointer(args:_*), args.size, "call")
         (retType, callRes)
     }
   }
@@ -217,9 +212,9 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     }
     val result = ctx.SIGN.getSymbol.getText match {
       case "+" =>
-        LLVMBuildAdd(builder, left, right, generateName("add"))
+        LLVMBuildAdd(builder, left, right, "add")
       case "-" =>
-        LLVMBuildSub(builder, left, right, generateName("sub"))
+        LLVMBuildSub(builder, left, right, "sub")
     }
     (Types.INT, result)
   }
@@ -232,11 +227,11 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     }
     val result = ctx.MULDIV.getSymbol.getText match {
       case "*" =>
-        LLVMBuildMul(builder, left, right, generateName("mul"))
+        LLVMBuildMul(builder, left, right, "mul")
       case "/" =>
-        LLVMBuildSDiv(builder, left, right, generateName("div"))
+        LLVMBuildSDiv(builder, left, right, "div")
       case "%" =>
-        LLVMBuildSRem(builder, left, right, generateName("mod"))
+        LLVMBuildSRem(builder, left, right, "mod")
     }
     (Types.INT, result)
   }
@@ -248,7 +243,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     }
     val resultValue = if (ctx.SIGN.getSymbol.getText == "-") {
       val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
-      LLVMBuildSub(builder, zero, value, generateName("sub"))
+      LLVMBuildSub(builder, zero, value, "sub")
     } else {
       value
     }
@@ -276,7 +271,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
       case ">"  => LLVMIntSGT
       case ">=" => LLVMIntSGE
     }
-    val result = LLVMBuildICmp(builder, predicate, left, right, generateName("cmp"))
+    val result = LLVMBuildICmp(builder, predicate, left, right, "cmp")
     (Types.BOOLEAN, result)
   }
 
@@ -288,16 +283,16 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     }
     val operator = ctx.JUNCTION.getSymbol.getText
     val result = operator match {
-      case "&&" => LLVMBuildAnd(builder, left, right, generateName("and"))
-      case "||" => LLVMBuildOr(builder, left, right, generateName("or"))
+      case "&&" => LLVMBuildAnd(builder, left, right, "and")
+      case "||" => LLVMBuildOr(builder, left, right, "or")
     }
     (Types.BOOLEAN, result)
   }
 
   override def visitIfStmt(ctx: IfStmtContext): (String, LLVMValueRef) = {
-    val thenBlock = LLVMAppendBasicBlock(currentFunction, generateName("ifTrue"))
-    val elseBlock = LLVMAppendBasicBlock(currentFunction, generateName("ifFalse"))
-    val endIf = LLVMAppendBasicBlock(currentFunction, generateName("endIf"))
+    val thenBlock = LLVMAppendBasicBlock(currentFunction, "ifTrue")
+    val elseBlock = LLVMAppendBasicBlock(currentFunction, "ifFalse")
+    val endIf = LLVMAppendBasicBlock(currentFunction, "endIf")
     val (condType, condition) = visit(ctx.expression)
     if (condType != Types.BOOLEAN) {
       throw new CompilationException(ctx, s"$condType type cannot be used in conditions")
@@ -315,7 +310,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     for (name <- thenAssignedVarNames | elseAssignedVarNames) {
       val (typeName, oldValue) = localVariables(name)
       oldValues += (name -> (typeName, oldValue))
-      val phi = LLVMBuildPhi(builder, Types.toTypeRef(typeName), generateName("phi"))
+      val phi = LLVMBuildPhi(builder, Types.toTypeRef(typeName), "phi")
       phiVals += (name -> phi)
     }
 
@@ -357,9 +352,9 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   }
 
   override def visitWhileStmt(ctx: WhileStmtContext): (String, LLVMValueRef) = {
-    val whileHead = LLVMAppendBasicBlock(currentFunction, generateName("whileHead"))
-    val whileBody = LLVMAppendBasicBlock(currentFunction, generateName("whileBody"))
-    val whileEnd = LLVMAppendBasicBlock(currentFunction, generateName("whileEnd"))
+    val whileHead = LLVMAppendBasicBlock(currentFunction, "whileHead")
+    val whileBody = LLVMAppendBasicBlock(currentFunction, "whileBody")
+    val whileEnd = LLVMAppendBasicBlock(currentFunction, "whileEnd")
     val previousBlock = LLVMGetPreviousBasicBlock(whileHead)
     LLVMBuildBr(builder, whileHead)
 
@@ -370,7 +365,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     for (varName <- assignedVarNames) {
       val (typeName, oldValue) = localVariables(varName)
       val varTypeRef = Types.toTypeRef(typeName)
-      val phi = LLVMBuildPhi(builder, varTypeRef, generateName("phi"))
+      val phi = LLVMBuildPhi(builder, varTypeRef, "phi")
       // previous value of this variable
       LLVMAddIncoming(phi, oldValue, previousBlock, 1)
       localVariables += (varName -> (typeName, phi))
