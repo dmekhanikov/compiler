@@ -42,7 +42,12 @@ object Compiler {
     val lexer = new ProgramLexer(input)
     val tokens = new CommonTokenStream(lexer)
     val parser = new ProgramParser(tokens)
-    parser.program()
+    val programContext = parser.program()
+    val errors = parser.getNumberOfSyntaxErrors
+    if (errors != 0) {
+      throw new CompilationException(s"There are $errors syntax errors")
+    }
+    programContext
   }
 
   def main(args: Array[String]): Unit = {
