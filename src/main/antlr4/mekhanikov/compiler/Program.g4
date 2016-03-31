@@ -36,6 +36,7 @@ functionDef
     : ID ID '(' parameterList? ')' '{'
         varDecl*
         statement*
+        'return' expression? ';'
       '}'
     ;
 
