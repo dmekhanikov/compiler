@@ -10,14 +10,14 @@ import scala.collection.mutable
 
 class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
 
-  private val MAIN_METHOD_NAME = "main"
   private val MODULE_NAME = "module"
 
   private var module: LLVMModuleRef = null
-  private var main: LLVMValueRef = null // only one function is supported for now
-  private var entry: LLVMBasicBlockRef = null
   private var builder: LLVMBuilderRef = null
-  private var variables: mutable.HashMap[String, (String, LLVMValueRef)] = null  // name -> (typename, value)
+  private var functionSignatures: mutable.HashMap[String, (String, List[String])] = null
+  private var currentFunction: LLVMValueRef = null
+  private var curReturnType: String = null
+  private var localVariables: mutable.HashMap[String, (String, LLVMValueRef)] = null  // name -> (typename, value)
   private val assignmentSearchVisitor = new AssignmentSearchVisitor()
 
   private var numberFormat: LLVMValueRef = null
@@ -36,22 +36,13 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     LLVMSetFunctionCallConv(fn, LLVMCCallConv)
   }
 
-  private def initIO(): Unit = {
-    declarePrintf()
-    numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
-  }
-
   override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef) = {
     module = LLVMModuleCreateWithName(MODULE_NAME)
-    main = initMain()
-    entry = LLVMAppendBasicBlock(main, "entry")
     builder = LLVMCreateBuilder
-    LLVMPositionBuilderAtEnd(builder, entry)
-    initIO()
-    variables = mutable.HashMap()
+    declarePrintf()
+    functionSignatures = mutable.HashMap()
     ctx.functionDef.foreach((fDefCtx: FunctionDefContext) => visit(fDefCtx))
 
-    LLVMBuildRetVoid(builder)
     LLVMDumpModule(module)
     val error = new BytePointer(null: Pointer)
     LLVMVerifyModule(module, LLVMAbortProcessAction, error)
@@ -59,10 +50,61 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     null
   }
 
-  private def initMain(): LLVMValueRef = {
-    val main = LLVMAddFunction(module, MAIN_METHOD_NAME, LLVMFunctionType(LLVMVoidType, LLVMVoidType, 0, 0))
-    LLVMSetFunctionCallConv(main, LLVMCCallConv)
-    main
+  override def visitFunctionDef(ctx: FunctionDefContext): (String, LLVMValueRef) = {
+    curReturnType = ctx.ID(0).getText
+    val functionName = ctx.ID(1).getText
+    if (LLVMGetNamedFunction(module, functionName) != null) {
+      throw new CompilationException(ctx, "function with this name already exists")
+    }
+    val parameterList = ctx.parameterList
+    val argTypes = if (parameterList != null) {
+      parameterList.parameter.map {parCtx => parCtx.ID(0).getText}.toList
+    } else {
+      List()
+    }
+    currentFunction = createFunction(functionName, curReturnType, argTypes)
+    functionSignatures += (functionName -> (curReturnType, argTypes))
+    localVariables = mutable.HashMap()
+    if (parameterList != null) {
+      for ((parCtx, i) <- parameterList.parameter.zipWithIndex) {
+        val typeName = parCtx.ID(0).getText
+        val varName = parCtx.ID(1).getText
+        val value = LLVMGetParam(currentFunction, i)
+        localVariables += (varName -> (typeName, value))
+      }
+    }
+    ctx.varDecl.foreach(visit)
+    ctx.statement.foreach(visit)
+    buildReturn(ctx)
+    null
+  }
+
+  private def buildReturn(ctx: FunctionDefContext): Unit = {
+    val returnExpr = ctx.expression
+    if (returnExpr == null) {
+      if (curReturnType == Types.VOID) {
+        LLVMBuildRetVoid(builder)
+      } else {
+        throw new CompilationException(ctx, "cannot return void from this function")
+      }
+    } else {
+      val (typeName, value) = visit(returnExpr)
+      if (typeName != curReturnType) {
+        throw new CompilationException(ctx, s"expecting expression of type $curReturnType, but was: $typeName")
+      } else {
+        LLVMBuildRet(builder, value)
+      }
+    }
+  }
+
+  private def createFunction(name: String, returnType: String, argTypes: Seq[String]): LLVMValueRef = {
+    val returnTypeRef = Types.toTypeRef(returnType)
+    val argTypeRefs = new PointerPointer(argTypes.map(typeName => Types.toTypeRef(typeName)):_*)
+    val function = LLVMAddFunction(module, name, LLVMFunctionType(returnTypeRef, argTypeRefs, argTypes.size, 0))
+    LLVMSetFunctionCallConv(function, LLVMCCallConv)
+    val entry = LLVMAppendBasicBlock(function, "entry")
+    LLVMPositionBuilderAtEnd(builder, entry)
+    function
   }
 
   override def visitBoolConst(ctx: BoolConstContext): (String, LLVMValueRef) = {
@@ -85,7 +127,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     ctx.ID.subList(1, ctx.ID.size)
       .map { node => node.getSymbol.getText }
       .foreach { varName =>
-        variables += (varName -> (typeName, null))
+        if (localVariables.contains(varName)) {
+          throw new CompilationException(ctx, s"repeated declaration of the variable $varName")
+        }
+        localVariables += (varName -> (typeName, null))
       }
     (null, null)
   }
@@ -93,10 +138,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   override def visitVariable(ctx: VariableContext): (String, LLVMValueRef) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
-    if (!variables.containsKey(varName)) {
+    if (!localVariables.containsKey(varName)) {
       throw new CompilationException(ctx, s"variable $varName is not defined")
     }
-    val (typeName, value) = variables(varName)
+    val (typeName, value) = localVariables(varName)
     if (value == null) {
       throw new CompilationException(ctx, s"variable $varName is not initialized")
     }
@@ -106,17 +151,17 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   override def visitAssignmentExpr(ctx: AssignmentExprContext): (String, LLVMValueRef) = {
     val varName = ctx.ID.getSymbol.getText
     checkVariableExists(varName, ctx)
-    val (typeName, _) = variables(varName)
+    val (typeName, _) = localVariables(varName)
     val (exprTypeName, value) = visit(ctx.expression)
     if (typeName != exprTypeName) {
       throw new CompilationException(ctx, s"incompatible types: ($typeName, $exprTypeName)")
     }
-    variables(varName) = (typeName, value)
+    localVariables(varName) = (typeName, value)
     (typeName, value)
   }
 
   def checkVariableExists(varName: String, ctx: ParserRuleContext): Unit = {
-    if (!variables.containsKey(varName)) {
+    if (!localVariables.containsKey(varName)) {
       throw new CompilationException(ctx, s"variable $varName is not defined")
     }
   }
@@ -130,11 +175,38 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
           throw new CompilationException(ctx, "wrong number of arguments")
         }
         val value = arguments.head._2
+        if (numberFormat == null) {
+          numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
+        }
         val printfArgs = Array(numberFormat, value)
         val printf = LLVMGetNamedFunction(module, "printf")
         LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, generateName("print"))
+        (Types.VOID, null)
+      case _ =>
+        val function = LLVMGetNamedFunction(module, functionName)
+        if (function == null) {
+          throw new CompilationException(ctx, "call to an undeclared function")
+        }
+        val (retType, argTypes) = functionSignatures(functionName)
+        val argsExpr = ctx.expressionList
+        val args = if (argsExpr != null) {
+          if (argsExpr.expression.size != argTypes.size) {
+            throw new CompilationException(ctx, "wrong number of arguments")
+          }
+          val providedArgs = argsExpr.expression.foldRight(List[(String, LLVMValueRef)]()) { (exprCtx, r) =>
+            visit(exprCtx) :: r
+          }
+          val providedArgTypes = providedArgs.map(arg => arg._1)
+          if (providedArgTypes != argTypes) {
+            throw new CompilationException(ctx, "wrong function signature")
+          }
+          providedArgs.map(arg => arg._2)
+        } else {
+          List()
+        }
+        val callRes = LLVMBuildCall(builder, function, new PointerPointer(args:_*), args.size, generateName("call"))
+        (retType, callRes)
     }
-    (null, null)
   }
 
   override def visitSum(ctx: SumContext): (String, LLVMValueRef) = {
@@ -223,9 +295,9 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   }
 
   override def visitIfStmt(ctx: IfStmtContext): (String, LLVMValueRef) = {
-    val thenBlock = LLVMAppendBasicBlock(main, generateName("ifTrue"))
-    val elseBlock = LLVMAppendBasicBlock(main, generateName("ifFalse"))
-    val endIf = LLVMAppendBasicBlock(main, generateName("endIf"))
+    val thenBlock = LLVMAppendBasicBlock(currentFunction, generateName("ifTrue"))
+    val elseBlock = LLVMAppendBasicBlock(currentFunction, generateName("ifFalse"))
+    val endIf = LLVMAppendBasicBlock(currentFunction, generateName("endIf"))
     val (condType, condition) = visit(ctx.expression)
     if (condType != Types.BOOLEAN) {
       throw new CompilationException(ctx, s"$condType type cannot be used in conditions")
@@ -241,53 +313,53 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     LLVMPositionBuilderAtEnd(builder, endIf)
     var phiVals = Map[String, LLVMValueRef]()
     for (name <- thenAssignedVarNames | elseAssignedVarNames) {
-      val (typeName, oldValue) = variables(name)
+      val (typeName, oldValue) = localVariables(name)
       oldValues += (name -> (typeName, oldValue))
       val phi = LLVMBuildPhi(builder, Types.toTypeRef(typeName), generateName("phi"))
       phiVals += (name -> phi)
     }
 
     // then branch
-    LLVMMoveBasicBlockAfter(thenBlock, LLVMGetLastBasicBlock(main)) // ordering the blocks
+    LLVMMoveBasicBlockAfter(thenBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, thenBlock)
     visit(ctx.block(0))
     LLVMBuildBr(builder, endIf)
-    val lastThenBlock = LLVMGetLastBasicBlock(main)
+    val lastThenBlock = LLVMGetLastBasicBlock(currentFunction)
     addIncomings(thenAssignedVarNames, lastThenBlock, phiVals)
-    variables ++= oldValues
+    localVariables ++= oldValues
     addIncomings(elseAssignedVarNames &~ thenAssignedVarNames, lastThenBlock, phiVals)
 
     // else branch
-    LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(main)) // ordering the blocks
+    LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, elseBlock)
     visit(ctx.block(1))
     LLVMBuildBr(builder, endIf)
-    val lastElseBlock = LLVMGetLastBasicBlock(main)
+    val lastElseBlock = LLVMGetLastBasicBlock(currentFunction)
     addIncomings(elseAssignedVarNames, lastElseBlock, phiVals)
-    variables ++= oldValues
+    localVariables ++= oldValues
     addIncomings(thenAssignedVarNames &~ elseAssignedVarNames, lastElseBlock, phiVals)
 
     // store phi nodes as variables' values
     for ((name, value) <- phiVals) {
-      val typeName = variables(name)._1
-      variables += (name -> (typeName, value))
+      val typeName = localVariables(name)._1
+      localVariables += (name -> (typeName, value))
     }
     LLVMPositionBuilderAtEnd(builder, endIf)
-    LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(main))     // ordering the blocks
+    LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(currentFunction))     // ordering the blocks
     (null, null)
   }
 
   private def addIncomings(varNames: Set[String], block: LLVMBasicBlockRef, phiVals: Map[String, LLVMValueRef]): Unit = {
     for (varName <- varNames) {
       val phi = phiVals(varName)
-      LLVMAddIncoming(phi, variables(varName)._2, block, 1)
+      LLVMAddIncoming(phi, localVariables(varName)._2, block, 1)
     }
   }
 
   override def visitWhileStmt(ctx: WhileStmtContext): (String, LLVMValueRef) = {
-    val whileHead = LLVMAppendBasicBlock(main, generateName("whileHead"))
-    val whileBody = LLVMAppendBasicBlock(main, generateName("whileBody"))
-    val whileEnd = LLVMAppendBasicBlock(main, generateName("whileEnd"))
+    val whileHead = LLVMAppendBasicBlock(currentFunction, generateName("whileHead"))
+    val whileBody = LLVMAppendBasicBlock(currentFunction, generateName("whileBody"))
+    val whileEnd = LLVMAppendBasicBlock(currentFunction, generateName("whileEnd"))
     val previousBlock = LLVMGetPreviousBasicBlock(whileHead)
     LLVMBuildBr(builder, whileHead)
 
@@ -296,12 +368,12 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     var phiVals = Map[String, LLVMValueRef]()
     LLVMPositionBuilderAtEnd(builder, whileHead)
     for (varName <- assignedVarNames) {
-      val (typeName, oldValue) = variables(varName)
+      val (typeName, oldValue) = localVariables(varName)
       val varTypeRef = Types.toTypeRef(typeName)
       val phi = LLVMBuildPhi(builder, varTypeRef, generateName("phi"))
       // previous value of this variable
       LLVMAddIncoming(phi, oldValue, previousBlock, 1)
-      variables += (varName -> (typeName, phi))
+      localVariables += (varName -> (typeName, phi))
       phiVals += (varName -> phi)
     }
 
@@ -313,20 +385,20 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     LLVMBuildCondBr(builder, condValue, whileBody, whileEnd)
 
     // loop body
-    LLVMMoveBasicBlockAfter(whileBody, LLVMGetLastBasicBlock(main))
+    LLVMMoveBasicBlockAfter(whileBody, LLVMGetLastBasicBlock(currentFunction))
     LLVMPositionBuilderAtEnd(builder, whileBody)
     visit(ctx.block())
     LLVMBuildBr(builder, whileHead)
 
     // assign variables PHIs that where introduced in head
-    LLVMMoveBasicBlockAfter(whileEnd, LLVMGetLastBasicBlock(main))
+    LLVMMoveBasicBlockAfter(whileEnd, LLVMGetLastBasicBlock(currentFunction))
     LLVMPositionBuilderAtEnd(builder, whileEnd)
     val lastBodyBlock = LLVMGetPreviousBasicBlock(whileEnd)
     for (varName <- assignedVarNames) {
       val phi = phiVals(varName)
-      val (typeName, newValue) = variables(varName)
+      val (typeName, newValue) = localVariables(varName)
       LLVMAddIncoming(phi, newValue, lastBodyBlock, 1)
-      variables(varName) = (typeName, phi)
+      localVariables(varName) = (typeName, phi)
     }
 
     (null, null)
