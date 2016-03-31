@@ -279,7 +279,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   override def visitJunction(ctx: JunctionContext): (String, LLVMValueRef) = {
     val (leftType, left) = visit(ctx.expression(0))
     val (rightType, right) = visit(ctx.expression(1))
-    if (leftType != Types.INT || rightType != Types.INT) {
+    if (leftType != Types.BOOLEAN || rightType != Types.BOOLEAN) {
       throw new CompilationException(ctx, s"invalid operand types: ($leftType, $rightType)")
     }
     val operator = ctx.JUNCTION.getSymbol.getText
