@@ -7,14 +7,30 @@ import org.bytedeco.javacpp.LLVM._
 
 object Compiler {
 
-  def compile(fileName: String): Unit = {
-    val tree = parse(fileName)
+  def generateModule(ast:ProgramContext): LLVMModuleRef = {
     val visitor = new CodegenProgramVisitor()
-    visitor.visit(tree)
-    LLVMDumpModule(visitor.module)
+    visitor.visit(ast)
     val error = new BytePointer(null: Pointer)
     LLVMVerifyModule(visitor.module, LLVMAbortProcessAction, error)
     LLVMDisposeMessage(error)
+    visitor.module
+  }
+
+  def compile(module: LLVMModuleRef): LLVMExecutionEngineRef = {
+    LLVMLinkInMCJIT()
+    LLVMInitializeNativeAsmPrinter()
+    LLVMInitializeNativeAsmParser()
+    LLVMInitializeNativeDisassembler()
+    LLVMInitializeNativeTarget()
+    val engine: LLVMExecutionEngineRef = new LLVMExecutionEngineRef
+    val provider: LLVMModuleProviderRef = LLVMCreateModuleProviderForExistingModule(module)
+    val error = new BytePointer(null.asInstanceOf[Pointer])
+    if (LLVMCreateJITCompiler(engine, provider, 2, error) != 0) {
+      val message = error.getString
+      LLVMDisposeMessage(error)
+      throw new IllegalStateException(message)
+    }
+    engine
   }
 
   def parse(fileName: String): ProgramContext = {
@@ -30,6 +46,8 @@ object Compiler {
   }
 
   def main(args: Array[String]): Unit = {
-    compile(args(0))
+    val ast = parse(args(0))
+    val module = generateModule(ast)
+    LLVMDumpModule(module)
   }
 }
