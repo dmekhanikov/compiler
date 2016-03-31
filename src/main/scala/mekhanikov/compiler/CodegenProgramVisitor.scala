@@ -250,6 +250,11 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
     (typeName, resultValue)
   }
 
+
+  override def visitParens(ctx: ParensContext): (String, LLVMValueRef) = {
+    visit(ctx.expression)
+  }
+
   override def visitComparison(ctx: ComparisonContext): (String, LLVMValueRef) = {
     val operator: String = ctx.CMP().getSymbol.getText
     val (leftType, left) = visit(ctx.expression(0))
