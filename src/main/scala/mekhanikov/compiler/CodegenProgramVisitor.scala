@@ -3,7 +3,7 @@ package mekhanikov.compiler
 import mekhanikov.compiler.ProgramParser._
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
-import org.bytedeco.javacpp.{BytePointer, Pointer, PointerPointer}
+import org.bytedeco.javacpp.PointerPointer
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -21,22 +21,50 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
   private var localVariables: mutable.HashMap[String, (String, LLVMValueRef)] = null  // name -> (typename, value)
   private val assignmentSearchVisitor = new AssignmentSearchVisitor()
 
-  private var numberFormat: LLVMValueRef = null
+  private var _numberFormat: LLVMValueRef = null
 
   private var genIndex = 0
 
-  private def declarePrintf(): Unit = {
+  private def declareIOFun(name: String): Unit = {
     val i8Pointer = LLVMPointerType(LLVMInt8Type(), 0)
-    val fnType = LLVMFunctionType(LLVMInt32Type(), i8Pointer, 1, 1)
-    val fn = LLVMAddFunction(module, "printf", fnType)
-    LLVMSetFunctionCallConv(fn, LLVMCCallConv)
+    val funType = LLVMFunctionType(LLVMInt32Type(), i8Pointer, 1, 1)
+    val fun = LLVMAddFunction(module, name, funType)
+    LLVMSetFunctionCallConv(fun, LLVMCCallConv)
+  }
+
+  private def numberFormat(): LLVMValueRef = {
+    if (_numberFormat == null) {
+      _numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
+    }
+    _numberFormat
+  }
+
+  private def initIO(): Unit = {
+    declareIOFun("printf")
+    declareIOFun("scanf")
+    generateRead()
+  }
+
+  private def generateRead(): Unit = {
+    val scanf = LLVMGetNamedFunction(module, "scanf")
+    val readIntType = LLVMFunctionType(LLVMInt32Type(), LLVMVoidType(), 0, 0)
+    val readFunName = "readInt"
+    val readIntFun = LLVMAddFunction(module, readFunName, readIntType)
+    val entry = LLVMAppendBasicBlock(readIntFun, "entry")
+    LLVMPositionBuilderAtEnd(builder, entry)
+    val tmp = LLVMBuildAlloca(builder, LLVMInt32Type(), "tmp")
+    val scanfArgs = new PointerPointer[LLVMValueRef](numberFormat(), tmp)
+    LLVMBuildCall(builder, scanf, scanfArgs, 2, "scanf")
+    val result = LLVMBuildLoad(builder, tmp, "read")
+    LLVMBuildRet(builder, result)
+    functionSignatures += (readFunName -> (Types.INT, List()))
   }
 
   override def visitProgram(ctx: ProgramContext): (String, LLVMValueRef) = {
     _module = LLVMModuleCreateWithName(MODULE_NAME)
     builder = LLVMCreateBuilder
-    declarePrintf()
     functionSignatures = mutable.HashMap()
+    initIO()
     ctx.functionDef.foreach((fDefCtx: FunctionDefContext) => visit(fDefCtx))
     null
   }
@@ -159,17 +187,19 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[(String, LLVMValueRef)] {
 
   override def visitFunctionCall(ctx: FunctionCallContext): (String, LLVMValueRef) = {
     val functionName = ctx.ID.getSymbol.getText
-    val arguments = ctx.expressionList.expression.map((exprCtx) => visit(exprCtx))
+    val paramListCtx = ctx.expressionList
+    val arguments = if (paramListCtx != null) {
+      paramListCtx.expression.map((exprCtx) => visit(exprCtx))
+    } else {
+      List()
+    }
     functionName match {
       case "print" =>
         if (arguments.size != 1) {
           throw new CompilationException(ctx, "wrong number of arguments")
         }
         val value = arguments.head._2
-        if (numberFormat == null) {
-          numberFormat = LLVMBuildGlobalStringPtr(builder, "%d\n", "numberFormat")
-        }
-        val printfArgs = Array(numberFormat, value)
+        val printfArgs = Array(numberFormat(), value)
         val printf = LLVMGetNamedFunction(module, "printf")
         LLVMBuildCall(builder, printf, new PointerPointer(printfArgs:_*), printfArgs.length, "print")
         (Types.VOID, null)
