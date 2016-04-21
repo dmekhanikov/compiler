@@ -1,7 +1,8 @@
 package mekhanikov.compiler
 import mekhanikov.compiler.ProgramParser.AssignmentExprContext
 
-class AssignmentSearchVisitor extends ProgramBaseVisitor[Set[String]] {
+class AssignmentSearchVisitor(val buildContext: BuildContext) extends ProgramBaseVisitor[Set[String]] {
+
   override def aggregateResult(aggregate: Set[String], nextResult: Set[String]): Set[String] = {
     aggregate ++ nextResult
   }
@@ -11,6 +12,8 @@ class AssignmentSearchVisitor extends ProgramBaseVisitor[Set[String]] {
   }
 
   override def visitAssignmentExpr(ctx: AssignmentExprContext): Set[String] = {
-    Set(ctx.ID.getSymbol.getText)
+    val varName = ctx.ID.getSymbol.getText
+    buildContext.checkVariableExists(varName, ctx)
+    Set(varName)
   }
 }

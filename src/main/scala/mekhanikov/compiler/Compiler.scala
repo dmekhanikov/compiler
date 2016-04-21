@@ -11,9 +11,10 @@ object Compiler {
     val visitor = new CodegenProgramVisitor()
     visitor.visit(ast)
     val error = new BytePointer(null: Pointer)
-    LLVMVerifyModule(visitor.module, LLVMAbortProcessAction, error)
+    val module = visitor.buildContext.module
+    LLVMVerifyModule(module, LLVMAbortProcessAction, error)
     LLVMDisposeMessage(error)
-    visitor.module
+    module
   }
 
   def compile(module: LLVMModuleRef): LLVMExecutionEngineRef = {
