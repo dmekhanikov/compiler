@@ -8,6 +8,78 @@
     <artifactId>compiler</artifactId>
     <version>1.0-SNAPSHOT</version>
 
+    <!-- I didn't even imagine that determining a platform is so freaking hard -->
+    <profiles>
+        <profile>
+            <id>Mac OS X</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <llvm.family>macosx</llvm.family>
+            </properties>
+        </profile>
+        <profile>
+            <id>Linux</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+            </activation>
+            <properties>
+                <llvm.family>linux</llvm.family>
+            </properties>
+        </profile>
+        <profile>
+            <id>Windons</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <llvm.family>windows</llvm.family>
+            </properties>
+        </profile>
+
+        <!-- There is more of it -->
+        <profile>
+            <id>x86</id>
+            <activation>
+                <os>
+                    <arch>x86</arch>
+                </os>
+            </activation>
+            <properties>
+                <llvm.arch>x86</llvm.arch>
+            </properties>
+        </profile>
+        <profile>
+            <id>x86_64</id>
+            <activation>
+                <os>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <llvm.arch>x86_64</llvm.arch>
+            </properties>
+        </profile>
+        <profile>
+            <id>amd64</id>
+            <activation>
+                <os>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <llvm.arch>x86_64</llvm.arch>
+            </properties>
+        </profile>
+    </profiles>
+
     <dependencies>
         <dependency>
             <groupId>org.scala-lang</groupId>
@@ -23,6 +95,12 @@
             <groupId>org.bytedeco.javacpp-presets</groupId>
             <artifactId>llvm</artifactId>
             <version>3.7.0-1.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco.javacpp-presets</groupId>
+            <artifactId>llvm</artifactId>
+            <version>3.7.0-1.1</version>
+            <classifier>${llvm.family}-${llvm.arch}</classifier>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
