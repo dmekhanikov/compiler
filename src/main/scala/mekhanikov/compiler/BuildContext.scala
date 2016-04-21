@@ -1,6 +1,8 @@
 package mekhanikov.compiler
 
+import mekhanikov.compiler.entities.struct.Struct
 import mekhanikov.compiler.entities.{Function, Variable}
+import mekhanikov.compiler.types.{Primitives, Type}
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
 import org.bytedeco.javacpp.PointerPointer
@@ -10,7 +12,9 @@ import scala.collection.mutable
 class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
 
   val functions = mutable.HashMap[String, Function]() // name -> (return type, arguments types)
+  val structures = mutable.HashMap[String, Struct]()
   var currentFunction: Option[LLVMValueRef] = None
+  var currentStructure: Option[Struct] = None
   val variables = mutable.HashMap[String, Variable]()  // name -> (typename, value)
 
   val builder = LLVMCreateBuilder
@@ -22,6 +26,18 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
   def checkVariableExists(varName: String, ctx: ParserRuleContext): Unit = {
     if (!variables.contains(varName)) {
       throw new CompilationException(ctx, s"variable $varName is not defined")
+    }
+  }
+
+  def findType(typeName: String, ctx: ParserRuleContext): Type = {
+    Primitives.forName(typeName) match {
+      case Some(primType) => primType
+      case None =>
+        structures.get(typeName) match {
+          case Some (struct) => struct
+          case None =>
+            throw new CompilationException(ctx, s"no such type: $typeName")
+        }
     }
   }
 
@@ -43,43 +59,42 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
   private def generatePrintInt(): Unit = {
     val printf = LLVMGetNamedFunction(module, "printf")
     val printFunName = "printInt"
-    val printFun = createFunction(printFunName, Types.VOID, List(Types.INT))
+    val printFun = createFunction(printFunName, Primitives.VOID, List(Primitives.INT))
 
     val value = LLVMGetParam(printFun, 0)
     val printfArgs = Array(numberFormat, value)
     LLVMBuildCall(builder, printf, new PointerPointer(printfArgs: _*), printfArgs.length, "print")
     LLVMBuildRetVoid(builder)
-    functions(printFunName) = new Function(printFunName, Types.VOID, List(Types.INT), printFun)
+    functions(printFunName) = new Function(printFunName, Primitives.VOID, List(Primitives.INT), printFun)
   }
 
   private def generatePrintBool(): Unit = {
     val printf = LLVMGetNamedFunction(module, "printf")
     val printFunName = "printBool"
-    val printFun = createFunction(printFunName, Types.VOID, List(Types.BOOLEAN))
+    val printFun = createFunction(printFunName, Primitives.VOID, List(Primitives.BOOLEAN))
 
     val value = LLVMGetParam(printFun, 0)
     val printfArgs = Array(numberFormat, value)
     LLVMBuildCall(builder, printf, new PointerPointer(printfArgs: _*), printfArgs.length, "print")
     LLVMBuildRetVoid(builder)
-    functions(printFunName) = new Function(printFunName, Types.VOID, List(Types.BOOLEAN), printFun)
+    functions(printFunName) = new Function(printFunName, Primitives.VOID, List(Primitives.BOOLEAN), printFun)
   }
 
   private def generateRead(): Unit = {
     val scanf = LLVMGetNamedFunction(module, "scanf")
     val readIntFunName = "readInt"
-    val readIntFun = createFunction(readIntFunName, Types.INT, List())
+    val readIntFun = createFunction(readIntFunName, Primitives.INT, List())
     val tmp = LLVMBuildAlloca(builder, LLVMInt32Type(), "tmp")
     val scanfArgs = new PointerPointer[LLVMValueRef](numberFormat, tmp)
     LLVMBuildCall(builder, scanf, scanfArgs, 2, "scanf")
     val result = LLVMBuildLoad(builder, tmp, "read")
     LLVMBuildRet(builder, result)
-    functions(readIntFunName) = new Function(readIntFunName, Types.INT, List(), readIntFun)
+    functions(readIntFunName) = new Function(readIntFunName, Primitives.INT, List(), readIntFun)
   }
 
-  def createFunction(name: String, returnType: String, argTypes: Seq[String]): LLVMValueRef = {
-    val returnTypeRef = Types.toTypeRef(returnType)
-    val argTypeRefs = new PointerPointer(argTypes.map(typeName => Types.toTypeRef(typeName)):_*)
-    val function = LLVMAddFunction(module, name, LLVMFunctionType(returnTypeRef, argTypeRefs, argTypes.size, 0))
+  def createFunction(name: String, returnType: Type, argTypes: Seq[Type]): LLVMValueRef = {
+    val argTypeRefs = new PointerPointer(argTypes.map(argType => argType.toLLVMType):_*)
+    val function = LLVMAddFunction(module, name, LLVMFunctionType(returnType.toLLVMType, argTypeRefs, argTypes.size, 0))
     LLVMSetFunctionCallConv(function, LLVMCCallConv)
     val entry = LLVMAppendBasicBlock(function, "entry")
     LLVMPositionBuilderAtEnd(builder, entry)

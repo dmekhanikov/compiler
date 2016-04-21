@@ -1,6 +1,6 @@
 package mekhanikov.compiler.expressions
 
-import mekhanikov.compiler.ProgramParser.{AssignmentExprContext, VariableContext}
+import mekhanikov.compiler.ProgramParser.{VarAssignmentContext, VariableContext}
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 
 class Variables(val buildContext: BuildContext) {
@@ -16,13 +16,13 @@ class Variables(val buildContext: BuildContext) {
     }
   }
 
-  def assignment(ctx: AssignmentExprContext): Value = {
+  def assignment(ctx: VarAssignmentContext): Value = {
     val varName = ctx.ID.getSymbol.getText
     buildContext.checkVariableExists(varName, ctx)
     val variable = buildContext.variables(varName)
     val exprValue = buildContext.visitor.visit(ctx.expression).get
-    if (variable.typeName != exprValue.typeName) {
-      throw new CompilationException(ctx, s"incompatible types: (${variable.typeName}, ${exprValue.typeName})")
+    if (variable.varType != exprValue.valType) {
+      throw new CompilationException(ctx, s"incompatible types: (${variable.varType}, ${exprValue.valType.toLLVMType})")
     }
     variable.value = Some(exprValue)
     variable.value.get

@@ -1,7 +1,7 @@
 grammar Program;
 
 program
-    : functionDef*
+    : (functionDef | structDef)*
     ;
 
 expression
@@ -16,10 +16,13 @@ expression
     | expression SIGN expression                #sum
     | expression CMP expression                 #comparison
     | expression JUNCTION expression            #junction
+    | 'new' ID                                  #newExpr
+    | ID '.' ID                                 #fieldAccess
     ;
 
 assignmentExpr
-    : <assoc=right> ID '=' expression
+    : <assoc=right> ID '=' expression           #varAssignment
+    | <assoc=right> ID '.' ID '=' expression    #fieldAssignment
     ;
 
 expressionList
@@ -30,6 +33,16 @@ statement
     : expression ';'                                #exprStmt
     | 'if' '(' expression ')' block 'else' block    #ifStmt
     | 'while' '(' expression ')' block              #whileStmt
+    ;
+
+structDef
+    : 'struct' ID '{'
+        fieldDecl*
+      '}'
+    ;
+
+fieldDecl
+    : PRIVATE? varDecl
     ;
 
 functionDef
@@ -58,6 +71,7 @@ parameterList
 
 Z       : [+-]?('0'|[1-9][0-9]*) ;
 B       : ('true' | 'false') ;
+PRIVATE: 'private';
 ID      : [_a-zA-Z][-_a-zA-Z0-9]* ;
 SIGN    : [+-] ;
 MULDIV  : [*/%] ;

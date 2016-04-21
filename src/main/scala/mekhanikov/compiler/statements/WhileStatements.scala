@@ -1,7 +1,8 @@
 package mekhanikov.compiler.statements
 
-import mekhanikov.compiler._
 import mekhanikov.compiler.ProgramParser.WhileStmtContext
+import mekhanikov.compiler._
+import mekhanikov.compiler.types.Primitives
 import org.bytedeco.javacpp.LLVM._
 
 import scala.collection.mutable
@@ -26,19 +27,18 @@ class WhileStatements(val buildContext: BuildContext) {
     LLVMPositionBuilderAtEnd(builder, whileHead)
     for (varName <- assignedVarNames) {
       val variable = buildContext.variables(varName)
-      val varTypeRef = Types.toTypeRef(variable.typeName)
-      val phi = LLVMBuildPhi(builder, varTypeRef, "phi")
+      val phi = LLVMBuildPhi(builder, variable.varType.toLLVMType, "phi")
       // previous value of this variable
       if (variable.value.isDefined) {
         LLVMAddIncoming(phi, variable.value.get.value, previousBlock, 1)
       }
-      buildContext.variables(varName).value = Some(new Value(variable.typeName, phi))
+      buildContext.variables(varName).value = Some(new Value(variable.varType, phi))
       phiVals(varName) = phi
     }
 
     // conditional jump
     val condition = visitor.visit(ctx.expression).get
-    if (condition.typeName != Types.BOOLEAN) {
+    if (condition.valType != Primitives.BOOLEAN) {
       throw new CompilationException(ctx, "$condType type cannot be used in conditions")
     }
     LLVMBuildCondBr(builder, condition.value, whileBody, whileEnd)
@@ -57,7 +57,7 @@ class WhileStatements(val buildContext: BuildContext) {
       val phi = phiVals(varName)
       val variable = buildContext.variables(varName)
       LLVMAddIncoming(phi, variable.value.get.value, lastBodyBlock, 1)
-      buildContext.variables(varName).value = Some(new Value(variable.typeName, phi))
+      buildContext.variables(varName).value = Some(new Value(variable.varType, phi))
     }
   }
 }

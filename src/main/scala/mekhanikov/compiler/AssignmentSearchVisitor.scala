@@ -1,5 +1,5 @@
 package mekhanikov.compiler
-import mekhanikov.compiler.ProgramParser.AssignmentExprContext
+import mekhanikov.compiler.ProgramParser.VarAssignmentContext
 
 class AssignmentSearchVisitor(val buildContext: BuildContext) extends ProgramBaseVisitor[Set[String]] {
 
@@ -11,7 +11,7 @@ class AssignmentSearchVisitor(val buildContext: BuildContext) extends ProgramBas
     Set()
   }
 
-  override def visitAssignmentExpr(ctx: AssignmentExprContext): Set[String] = {
+  override def visitVarAssignment(ctx: VarAssignmentContext): Set[String] = {
     val varName = ctx.ID.getSymbol.getText
     buildContext.checkVariableExists(varName, ctx)
     Set(varName)

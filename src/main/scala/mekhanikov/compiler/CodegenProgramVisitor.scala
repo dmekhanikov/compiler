@@ -1,7 +1,7 @@
 package mekhanikov.compiler
 
 import mekhanikov.compiler.ProgramParser._
-import mekhanikov.compiler.definitions.{FunctionDefinitions, VariableDeclarations}
+import mekhanikov.compiler.definitions.{FunctionDefinitions, Structures, VariableDeclarations}
 import mekhanikov.compiler.expressions.{Ariphmetics, Constants, FunctionCalls, Variables}
 import mekhanikov.compiler.statements.{IfStatements, WhileStatements}
 
@@ -18,16 +18,33 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   private val whileStatements = new WhileStatements(buildContext)
   private val variableDeclarations = new VariableDeclarations(buildContext)
   private val functionDefinitions = new FunctionDefinitions(buildContext)
+  private val structures = new Structures(buildContext)
 
   override def visitProgram(ctx: ProgramContext): Option[Value] = {
-    ctx.functionDef.foreach((fDefCtx: FunctionDefContext) => visit(fDefCtx))
+    ctx.children.foreach(childCtx => visit(childCtx))
     None
   }
+
 
   override def visitFunctionDef(ctx: FunctionDefContext): Option[Value] = {
     functionDefinitions.function(ctx)
     None
   }
+
+  override def visitStructDef(ctx: StructDefContext): Option[Value] = {
+    structures.struct(ctx)
+    None
+  }
+
+  override def visitNewExpr(ctx: NewExprContext): Option[Value] =
+    Some(structures.newExpr(ctx))
+
+  override def visitFieldAccess(ctx: FieldAccessContext): Option[Value] =
+    Some(structures.readAccess(ctx))
+
+
+  override def visitFieldAssignment(ctx: FieldAssignmentContext): Option[Value] =
+    Some(structures.writeAccess(ctx))
 
   override def visitBoolConst(ctx: BoolConstContext): Option[Value] =
     Some(constants.bool(ctx))
@@ -43,7 +60,8 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   override def visitVariable(ctx: VariableContext): Option[Value] =
     Some(variables.variable(ctx))
 
-  override def visitAssignmentExpr(ctx: AssignmentExprContext): Option[Value] =
+
+  override def visitVarAssignment(ctx: VarAssignmentContext): Option[Value] =
     Some(variables.assignment(ctx))
 
   override def visitFunctionCall(ctx: FunctionCallContext): Option[Value] =

@@ -282,4 +282,39 @@ class CompilerTest {
         |}
       """.stripMargin)
   }
+
+  @Test
+  def structFields(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   int w, h;
+        |}
+        |
+        |int box() {
+        |   Rectangle r;
+        |   r = new Rectangle;
+        |   r.w = 3;
+        |   r.h = 4;
+        |   return r.w * r.h;
+        |}
+      """.stripMargin
+    runTest(src, 12)
+  }
+
+  @Test
+  def structAccessViolation(): Unit = {
+    val src =
+      """struct Safe {
+        |   private int secret;
+        |}
+        |
+        |void box() {
+        |   Safe s;
+        |   s = new Safe;
+        |   s.secret = 1;
+        |   return;
+        |}
+      """.stripMargin
+    expectSemanticException(src)
+  }
 }

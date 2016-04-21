@@ -1,7 +1,8 @@
 package mekhanikov.compiler.expressions
 
 import mekhanikov.compiler.ProgramParser.FunctionCallContext
-import mekhanikov.compiler.{BuildContext, CompilationException, Types, Value}
+import mekhanikov.compiler.types.Primitives
+import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.bytedeco.javacpp.LLVM._
 import org.bytedeco.javacpp.PointerPointer
 
@@ -28,7 +29,7 @@ class FunctionCalls(val buildContext: BuildContext) {
             val providedArgs = argsExpr.expression.foldRight(List[Value]()) { (exprCtx, r) =>
               visitor.visit(exprCtx).get :: r
             }
-            val providedArgTypes = providedArgs.map(arg => arg.typeName)
+            val providedArgTypes = providedArgs.map(arg => arg.valType)
             if (providedArgTypes != function.argTypes) {
               throw new CompilationException(ctx, "wrong function signature")
             }
@@ -37,7 +38,7 @@ class FunctionCalls(val buildContext: BuildContext) {
         }
         val callRes = LLVMBuildCall(builder, llvmFunction, new PointerPointer(args: _*), args.size, "call")
         function.returnType match {
-          case Types.VOID => Value.VOID
+          case Primitives.VOID => Value.VOID
           case _ =>
             new Value(function.returnType, callRes)
         }

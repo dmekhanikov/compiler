@@ -2,6 +2,7 @@ package mekhanikov.compiler.statements
 
 import mekhanikov.compiler.ProgramParser.IfStmtContext
 import mekhanikov.compiler._
+import mekhanikov.compiler.types.Primitives
 import org.bytedeco.javacpp.LLVM._
 
 import scala.collection.mutable
@@ -18,8 +19,8 @@ class IfStatements(val buildContext: BuildContext) {
     val elseBlock = LLVMAppendBasicBlock(currentFunction, "ifFalse")
     val endIf = LLVMAppendBasicBlock(currentFunction, "endIf")
     val condition = visitor.visit(ctx.expression).get
-    if (condition.typeName != Types.BOOLEAN) {
-      throw new CompilationException(ctx, s"${condition.typeName} type cannot be used in conditions")
+    if (condition.valType != Primitives.BOOLEAN) {
+      throw new CompilationException(ctx, s"${condition.valType.name} type cannot be used in conditions")
     }
     LLVMBuildCondBr(builder, condition.value, thenBlock, elseBlock)
 
@@ -34,7 +35,7 @@ class IfStatements(val buildContext: BuildContext) {
     for (name <- thenAssignedVarNames | elseAssignedVarNames) {
       val variable = buildContext.variables(name)
       oldValues(name) = variable.value
-      val phi = LLVMBuildPhi(builder, Types.toTypeRef(variable.typeName), "phi")
+      val phi = LLVMBuildPhi(builder, variable.varType.toLLVMType, "phi")
       phiVals(name) = phi
     }
 
@@ -61,7 +62,7 @@ class IfStatements(val buildContext: BuildContext) {
     // store phi nodes as variables' values
     for ((name, value) <- phiVals) {
       val variable = buildContext.variables(name)
-      variable.value = Some(new Value(variable.typeName, value))
+      variable.value = Some(new Value(variable.varType, value))
     }
     LLVMPositionBuilderAtEnd(builder, endIf)
     LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(currentFunction))     // ordering the blocks
