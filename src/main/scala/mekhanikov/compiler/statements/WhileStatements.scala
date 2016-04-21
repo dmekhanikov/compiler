@@ -29,10 +29,8 @@ class WhileStatements(val buildContext: BuildContext) {
       val variable = buildContext.variables(varName)
       val phi = LLVMBuildPhi(builder, variable.varType.toLLVMType, "phi")
       // previous value of this variable
-      if (variable.value.isDefined) {
-        LLVMAddIncoming(phi, variable.value.get.value, previousBlock, 1)
-      }
-      buildContext.variables(varName).value = Some(new Value(variable.varType, phi))
+      LLVMAddIncoming(phi, variable.value.value, previousBlock, 1)
+      buildContext.variables(varName).value = new Value(variable.varType, phi)
       phiVals(varName) = phi
     }
 
@@ -56,8 +54,8 @@ class WhileStatements(val buildContext: BuildContext) {
     for (varName <- assignedVarNames) {
       val phi = phiVals(varName)
       val variable = buildContext.variables(varName)
-      LLVMAddIncoming(phi, variable.value.get.value, lastBodyBlock, 1)
-      buildContext.variables(varName).value = Some(new Value(variable.varType, phi))
+      LLVMAddIncoming(phi, variable.value.value, lastBodyBlock, 1)
+      buildContext.variables(varName).value = new Value(variable.varType, phi)
     }
   }
 }

@@ -37,7 +37,7 @@ class FunctionDefinitions(val buildContext: BuildContext) {
           val varName = parCtx.ID(1).getText
           val value = LLVMGetParam(llvmFunction, i)
           val parameter = new Variable(varType, varName)
-          parameter.value = Some(new Value(varType, value))
+          parameter.value = new Value(varType, value)
           buildContext.variables(varName) = parameter
         }
       case None =>

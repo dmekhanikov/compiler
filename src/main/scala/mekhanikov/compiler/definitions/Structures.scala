@@ -6,7 +6,6 @@ import mekhanikov.compiler.entities.struct.{Field, Struct, Visibility}
 import mekhanikov.compiler.types.Primitives
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.antlr.v4.runtime.ParserRuleContext
-import org.antlr.v4.runtime.tree.TerminalNode
 import org.bytedeco.javacpp.LLVM._
 
 import scala.collection.JavaConversions._
@@ -29,7 +28,16 @@ class Structures(val buildContext: BuildContext) {
       throw new CompilationException(ctx, "No such structure: " + structName)
     }
     val struct = buildContext.structures(structName)
-    val llvmValue = LLVMBuildAlloca(builder, struct.toLLVMType, structName)
+    val llvmValue = LLVMBuildAlloca(builder, struct.toLLVMStructType, structName)
+    struct.fields.zipWithIndex.foreach { case (field, i) =>
+      val elementPtr = LLVMBuildStructGEP(builder, llvmValue, i, "fieldPtr")
+      val initValue = if (field.fieldType.isInstanceOf[Struct]) {
+        LLVMConstPointerNull(field.fieldType.toLLVMType)
+      } else {
+        LLVMConstNull(field.fieldType.toLLVMType)
+      }
+      LLVMBuildStore(builder, initValue, elementPtr)
+    }
     new Value(struct, llvmValue)
   }
 
@@ -39,7 +47,7 @@ class Structures(val buildContext: BuildContext) {
     val struct = variable.varType.asInstanceOf[Struct]
     val fieldName = ctx.ID(1).getText
     val (field, i) = findFieldWithIndex(struct, fieldName, ctx)
-    val valuePtr = LLVMBuildStructGEP(builder, variable.value.get.value, i, "fieldPtr")
+    val valuePtr = LLVMBuildStructGEP(builder, variable.value.value, i, "fieldPtr")
     val llvmValue = LLVMBuildLoad(builder, valuePtr, "field")
     new Value(field.fieldType, llvmValue)
   }
@@ -54,7 +62,7 @@ class Structures(val buildContext: BuildContext) {
     if (field.fieldType != value.valType) {
       throw new CompilationException(ctx, s"incompatible types: ${field.fieldType.name} and ${value.valType.name}")
     }
-    val elementPtr = LLVMBuildStructGEP(builder, variable.value.get.value, i, "fieldPtr")
+    val elementPtr = LLVMBuildStructGEP(builder, variable.value.value, i, "fieldPtr")
     LLVMBuildStore(builder, value.value, elementPtr)
     value
   }
@@ -64,9 +72,6 @@ class Structures(val buildContext: BuildContext) {
     val variable = buildContext.variables(varName)
     if (Primitives.isPrimitive(variable.varType)) {
       throw new CompilationException(ctx, "Cannot access a field of a primitive value")
-    }
-    if (variable.value.isEmpty) {
-      throw new CompilationException(ctx, s"Variable $varName is not initialized")
     }
     variable
   }

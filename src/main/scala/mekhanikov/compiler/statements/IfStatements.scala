@@ -29,7 +29,7 @@ class IfStatements(val buildContext: BuildContext) {
     // Also we need old values to make phi nodes
     val thenAssignedVarNames = assignmentSearchVisitor.visit(ctx.block(0))
     val elseAssignedVarNames = assignmentSearchVisitor.visit(ctx.block(1))
-    val oldValues = mutable.Map[String, Option[Value]]()
+    val oldValues = mutable.Map[String, Value]()
     LLVMPositionBuilderAtEnd(builder, endIf)
     val phiVals = mutable.Map[String, LLVMValueRef]()
     for (name <- thenAssignedVarNames | elseAssignedVarNames) {
@@ -62,7 +62,7 @@ class IfStatements(val buildContext: BuildContext) {
     // store phi nodes as variables' values
     for ((name, value) <- phiVals) {
       val variable = buildContext.variables(name)
-      variable.value = Some(new Value(variable.varType, value))
+      variable.value = new Value(variable.varType, value)
     }
     LLVMPositionBuilderAtEnd(builder, endIf)
     LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(currentFunction))     // ordering the blocks
@@ -71,12 +71,12 @@ class IfStatements(val buildContext: BuildContext) {
   private def addIncomings(varNames: Set[String], block: LLVMBasicBlockRef, phiVals: mutable.Map[String, LLVMValueRef]): Unit = {
     for (varName <- varNames) {
       val phi = phiVals(varName)
-      val value = buildContext.variables(varName).value.get.value
+      val value = buildContext.variables(varName).value.value
       LLVMAddIncoming(phi, value, block, 1)
     }
   }
 
-  private def restoreValues(oldValues: mutable.Map[String, Option[Value]]): Unit = {
+  private def restoreValues(oldValues: mutable.Map[String, Value]): Unit = {
     oldValues.foreach { case (name, value) =>
       buildContext.variables(name).value = value
     }

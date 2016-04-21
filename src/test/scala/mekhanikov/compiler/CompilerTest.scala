@@ -274,13 +274,14 @@ class CompilerTest {
 
   @Test
   def uninitializedVariable(): Unit = {
-    expectSemanticException(
-      """int box() {
+      val src =
+        """int box() {
         |    int a, b;
         |    a = b + 2;
         |    return a;
         |}
-      """.stripMargin)
+      """.stripMargin
+    runTest(src, 2)
   }
 
   @Test
@@ -316,5 +317,53 @@ class CompilerTest {
         |}
       """.stripMargin
     expectSemanticException(src)
+  }
+
+  @Test
+  def uninitializedStructField(): Unit = {
+    val src =
+      """struct A {
+        |   int a;
+        |}
+        |int box() {
+        |   A a;
+        |   a = new A;
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 0)
+  }
+
+  @Test
+  def conditionalStructInit(): Unit = {
+    val src =
+      """struct A {
+        |   int a;
+        |}
+        |int box() {
+        |   A a;
+        |   if (true) {
+        |     a = new A;
+        |   } else {}
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 0)
+  }
+
+  @Test
+  def conditionalPrimitiveInit(): Unit = {
+    val src =
+      """int box() {
+        |   int a, b;
+        |   if (true) {
+        |       a = 1;
+        |   } else {
+        |       b = 2;
+        |   }
+        |   return a + b;
+        |}
+      """.stripMargin
+    runTest(src, 1)
   }
 }

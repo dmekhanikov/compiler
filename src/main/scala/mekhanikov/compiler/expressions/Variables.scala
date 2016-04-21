@@ -9,11 +9,7 @@ class Variables(val buildContext: BuildContext) {
     val varName = ctx.ID.getSymbol.getText
     buildContext.checkVariableExists(varName, ctx)
     val variable = buildContext.variables(varName)
-    variable.value match {
-      case Some(value) => value
-      case None =>
-        throw new CompilationException(ctx, s"variable $varName is not initialized")
-    }
+    variable.value
   }
 
   def assignment(ctx: VarAssignmentContext): Value = {
@@ -24,7 +20,7 @@ class Variables(val buildContext: BuildContext) {
     if (variable.varType != exprValue.valType) {
       throw new CompilationException(ctx, s"incompatible types: (${variable.varType}, ${exprValue.valType.toLLVMType})")
     }
-    variable.value = Some(exprValue)
-    variable.value.get
+    variable.value = exprValue
+    exprValue
   }
 }
