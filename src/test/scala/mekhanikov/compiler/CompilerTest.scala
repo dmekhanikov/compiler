@@ -366,4 +366,66 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 1)
   }
+
+  @Test
+  def passStructToFunction(): Unit = {
+    val src =
+      """struct A { int a; }
+        |int getA(A a) { return a.a; }
+        |int box() {
+        |   A a;
+        |   a = new A;
+        |   a.a = 5;
+        |   return getA(a);
+        |}
+      """.stripMargin
+    runTest(src, 5)
+  }
+
+  @Test
+  def returnStructFromFunction(): Unit = {
+    val src =
+      """struct A { int a; }
+        |A constructA() {
+        |   A a;
+        |   a = new A;
+        |   a.a = 5;
+        |   return a;
+        |}
+        |int box() {
+        |   A a;
+        |   a = constructA();
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 5)
+  }
+
+  @Test
+  def structFieldInStruct(): Unit = {
+    val src =
+      """struct A { int x; }
+        |struct B { A a; }
+        |A constructA() {
+        |   A a;
+        |   a = new A;
+        |   a.x = 10;
+        |   return a;
+        |}
+        |B constructB() {
+        |   B b;
+        |   b = new B;
+        |   b.a = constructA();
+        |   return b;
+        |}
+        |int box() {
+        |   B b;
+        |   A a;
+        |   b = constructB();
+        |   a = b.a;
+        |   return a.x;
+        |}
+      """.stripMargin
+    runTest(src, 10)
+  }
 }
