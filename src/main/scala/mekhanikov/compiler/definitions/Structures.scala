@@ -41,42 +41,34 @@ class Structures(val buildContext: BuildContext) {
     new Value(struct, llvmValue)
   }
 
-  def readAccess(ctx: FieldAccessContext): Value = {
-    val varName = ctx.ID(0).getText
-    val variable = findVariable(varName, ctx)
-    val struct = variable.varType.asInstanceOf[Struct]
-    val fieldName = ctx.ID(1).getText
-    val (field, i) = findFieldWithIndex(struct, fieldName, ctx)
-    val valuePtr = LLVMBuildStructGEP(builder, variable.value.value, i, "fieldPtr")
+  def readAccess(ctx: FieldReadContext): Value = {
+    val expr = visitor.visit(ctx.expression).get
+    val fieldName = ctx.ID.getText
+    val (field, i) = findFieldWithIndex(expr, fieldName, ctx)
+
+    val valuePtr = LLVMBuildStructGEP(builder, expr.value, i, "fieldPtr")
     val llvmValue = LLVMBuildLoad(builder, valuePtr, "field")
     new Value(field.fieldType, llvmValue)
   }
 
-  def writeAccess(ctx: FieldAssignmentContext): Value = {
-    val varName = ctx.ID(0).getText
-    val variable = findVariable(varName, ctx)
-    val struct = variable.varType.asInstanceOf[Struct]
-    val fieldName = ctx.ID(1).getText
-    val (field, i) = findFieldWithIndex(struct, fieldName, ctx)
-    val value = visitor.visit(ctx.expression).get
+  def writeAccess(ctx: FieldWriteContext): Value = {
+    val expr = visitor.visit(ctx.expression(0)).get
+    val fieldName = ctx.ID.getText
+    val (field, i) = findFieldWithIndex(expr, fieldName, ctx)
+    val value = visitor.visit(ctx.expression(1)).get
     if (field.fieldType != value.valType) {
       throw new CompilationException(ctx, s"incompatible types: ${field.fieldType.name} and ${value.valType.name}")
     }
-    val elementPtr = LLVMBuildStructGEP(builder, variable.value.value, i, "fieldPtr")
+    val elementPtr = LLVMBuildStructGEP(builder, expr.value, i, "fieldPtr")
     LLVMBuildStore(builder, value.value, elementPtr)
     value
   }
 
-  def findVariable(varName: String, ctx: ParserRuleContext): Variable = {
-    buildContext.checkVariableExists(varName, ctx)
-    val variable = buildContext.variables(varName)
-    if (Primitives.isPrimitive(variable.varType)) {
+  def findFieldWithIndex(value: Value, fieldName: String, ctx: ParserRuleContext): (Field, Int) = {
+    if (Primitives.isPrimitive(value.valType)) {
       throw new CompilationException(ctx, "Cannot access a field of a primitive value")
     }
-    variable
-  }
-
-  def findFieldWithIndex(struct: Struct, fieldName: String, ctx: ParserRuleContext): (Field, Int) = {
+    val struct = value.valType.asInstanceOf[Struct]
     struct.fields
       .zipWithIndex
       .find { case (field, i) => field.name == fieldName } match {

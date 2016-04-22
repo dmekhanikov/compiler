@@ -276,10 +276,10 @@ class CompilerTest {
   def uninitializedVariable(): Unit = {
       val src =
         """int box() {
-        |    int a, b;
-        |    a = b + 2;
-        |    return a;
-        |}
+          |    int a, b;
+          |    a = b + 2;
+          |    return a;
+          |}
       """.stripMargin
     runTest(src, 2)
   }
@@ -427,5 +427,68 @@ class CompilerTest {
         |}
       """.stripMargin
     runTest(src, 10)
+  }
+
+  @Test
+  def chainingFieldReadAccess(): Unit = {
+    val src =
+      """struct A { int x; }
+        |struct B { A a; }
+        |A constructA() {
+        |   A a;
+        |   a = new A;
+        |   a.x = 10;
+        |   return a;
+        |}
+        |B constructB() {
+        |   B b;
+        |   b = new B;
+        |   b.a = constructA();
+        |   return b;
+        |}
+        |int box() {
+        |   B b;
+        |   b = constructB();
+        |   return b.a.x;
+        |}""".stripMargin
+    runTest(src, 10)
+  }
+
+  @Test
+  def chainingFieldWriteAccess(): Unit = {
+    val src =
+      """struct A { int x; }
+        |struct B { A a; }
+        |B constructB() {
+        |   B b;
+        |   b = new B;
+        |   b.a = new A;
+        |   return b;
+        |}
+        |int box() {
+        |   B b;
+        |   b = constructB();
+        |   b.a.x = 10;
+        |   return b.a.x;
+        |}""".stripMargin
+    runTest(src, 10)
+  }
+
+  @Test
+  def fieldAccessAssoc(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   int w, h, s;
+        |}
+        |int box() {
+        |   Rectangle r;
+        |   r = new Rectangle;
+        |   r.w = 10;
+        |   r.h = 15;
+        |   r.s = r.w * r.h;
+        |   return r.s;
+        |}
+      """.stripMargin
+    runTest(src, 150)
   }
 }

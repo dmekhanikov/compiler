@@ -25,7 +25,6 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
     None
   }
 
-
   override def visitFunctionDef(ctx: FunctionDefContext): Option[Value] = {
     functionDefinitions.function(ctx)
     None
@@ -39,11 +38,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   override def visitNewExpr(ctx: NewExprContext): Option[Value] =
     Some(structures.newExpr(ctx))
 
-  override def visitFieldAccess(ctx: FieldAccessContext): Option[Value] =
+  override def visitFieldRead(ctx: FieldReadContext): Option[Value] =
     Some(structures.readAccess(ctx))
 
-
-  override def visitFieldAssignment(ctx: FieldAssignmentContext): Option[Value] =
+  override def visitFieldWrite(ctx: FieldWriteContext): Option[Value] =
     Some(structures.writeAccess(ctx))
 
   override def visitBoolConst(ctx: BoolConstContext): Option[Value] =
@@ -60,7 +58,6 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   override def visitVariable(ctx: VariableContext): Option[Value] =
     Some(variables.variable(ctx))
 
-
   override def visitVarAssignment(ctx: VarAssignmentContext): Option[Value] =
     Some(variables.assignment(ctx))
 
@@ -75,7 +72,6 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
 
   override def visitSignedExpr(ctx: SignedExprContext): Option[Value] =
     Some(ariphmetics.sign(ctx))
-
 
   override def visitParens(ctx: ParensContext): Option[Value] = {
     visit(ctx.expression)

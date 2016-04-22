@@ -5,24 +5,20 @@ program
     ;
 
 expression
-    : B                                         #boolConst
-    | Z                                         #intConst
-    | ID                                        #variable
-    | assignmentExpr                            #assignment
-    | ID '(' expressionList? ')'                #functionCall
-    | '(' expression ')'                        #parens
-    | SIGN expression                           #signedExpr
-    | expression MULDIV expression              #mulDiv
-    | expression SIGN expression                #sum
-    | expression CMP expression                 #comparison
-    | expression JUNCTION expression            #junction
-    | 'new' ID                                  #newExpr
-    | ID '.' ID                                 #fieldAccess
-    ;
-
-assignmentExpr
-    : <assoc=right> ID '=' expression           #varAssignment
-    | <assoc=right> ID '.' ID '=' expression    #fieldAssignment
+    : B                                                 #boolConst
+    | Z                                                 #intConst
+    | ID                                                #variable
+    | ID '(' expressionList? ')'                        #functionCall
+    | '(' expression ')'                                #parens
+    | SIGN expression                                   #signedExpr
+    | expression '.' ID                                 #fieldRead
+    | expression MULDIV expression                      #mulDiv
+    | expression SIGN expression                        #sum
+    | expression CMP expression                         #comparison
+    | expression JUNCTION expression                    #junction
+    | 'new' ID                                          #newExpr
+    | <assoc=right> expression '.' ID '=' expression    #fieldWrite
+    | <assoc=right> ID '=' expression                   #varAssignment
     ;
 
 expressionList

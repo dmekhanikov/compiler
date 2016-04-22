@@ -18,7 +18,7 @@ class Variables(val buildContext: BuildContext) {
     val variable = buildContext.variables(varName)
     val exprValue = buildContext.visitor.visit(ctx.expression).get
     if (variable.varType != exprValue.valType) {
-      throw new CompilationException(ctx, s"incompatible types: (${variable.varType}, ${exprValue.valType.toLLVMType})")
+      throw new CompilationException(ctx, s"incompatible types: (${variable.varType}, ${exprValue.valType})")
     }
     variable.value = exprValue
     exprValue
