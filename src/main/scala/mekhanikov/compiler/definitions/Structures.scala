@@ -1,7 +1,6 @@
 package mekhanikov.compiler.definitions
 
 import mekhanikov.compiler.ProgramParser._
-import mekhanikov.compiler.entities.Variable
 import mekhanikov.compiler.entities.struct.{Field, Struct, Visibility}
 import mekhanikov.compiler.types.Primitives
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
@@ -91,7 +90,7 @@ class Structures(val buildContext: BuildContext) {
       } else {
         Visibility.PUBLIC
       }
-      val ids = fieldDeclCtx.varDecl.ID
+      val ids = fieldDeclCtx.ID
       val fieldType = buildContext.findType(ids(0).getText, fieldDeclCtx)
       val fieldNames = ids.subList(1, ids.size)
       fieldNames.map { fieldNameCtx =>

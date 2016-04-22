@@ -491,4 +491,18 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 150)
   }
+
+  @Test
+  def variablesInit(): Unit = {
+    val src =
+      """struct A { int a; }
+        |int box() {
+        |   A a = new A;
+        |   int b = 5, c = 6;
+        |   a.a = 4;
+        |   return a.a * b * c;
+        |}
+      """.stripMargin
+    runTest(src, 120)
+  }
 }

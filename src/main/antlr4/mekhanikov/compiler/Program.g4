@@ -38,7 +38,7 @@ structDef
     ;
 
 fieldDecl
-    : PRIVATE? varDecl
+    : PRIVATE? ID ID (',' ID)* ';'
     ;
 
 functionDef
@@ -50,7 +50,11 @@ functionDef
     ;
 
 varDecl
-    : ID ID (',' ID)* ';'
+    : ID varInit (',' varInit)* ';'
+    ;
+
+varInit
+    : ID ('=' expression)?
     ;
 
 block
