@@ -12,6 +12,7 @@ expression
     | '(' expression ')'                                #parens
     | SIGN expression                                   #signedExpr
     | expression '.' ID                                 #fieldRead
+    | expression '.' ID '(' expressionList? ')'         #methodCall
     | expression MULDIV expression                      #mulDiv
     | expression SIGN expression                        #sum
     | expression CMP expression                         #comparison
@@ -33,12 +34,16 @@ statement
 
 structDef
     : 'struct' ID '{'
-        fieldDecl*
+        memberDecl*
       '}'
     ;
 
+memberDecl
+    : PRIVATE? (fieldDecl | functionDef)
+    ;
+
 fieldDecl
-    : PRIVATE? ID ID (',' ID)* ';'
+    : ID ID (',' ID)* ';'
     ;
 
 functionDef

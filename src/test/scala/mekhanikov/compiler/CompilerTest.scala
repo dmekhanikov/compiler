@@ -505,4 +505,53 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 120)
   }
+
+  @Test
+  def structMethods(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   int w, h;
+        |   int square() {
+        |     return this.w * this.h;
+        |   }
+        |}
+        |int box() {
+        |   Rectangle r = new Rectangle;
+        |   r.w = 4;
+        |   r.h = 5;
+        |   return r.square();
+        |}
+      """.stripMargin
+    runTest(src, 20)
+  }
+
+  @Test
+  def structMethodsWithParameters(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   int w, h;
+        |   bool equals(Rectangle other) {
+        |       return this.w == other.w && this.h == other.h;
+        |   }
+        |}
+        |Rectangle constructRectangle(int w, int h) {
+        |   Rectangle r = new Rectangle;
+        |   r.w = w;
+        |   r.h = h;
+        |   return r;
+        |}
+        |int box() {
+        |   Rectangle r1 = constructRectangle(4, 5);
+        |   Rectangle r2 = constructRectangle(4, 5);
+        |   int result;
+        |   if (r1.equals(r2)) {
+        |     result = 1;
+        |   } else {
+        |     result = 0;
+        |   }
+        |   return result;
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
 }

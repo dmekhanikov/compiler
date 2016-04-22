@@ -18,7 +18,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   private val whileStatements = new WhileStatements(buildContext)
   private val variableDeclarations = new VariableDeclarations(buildContext)
   private val functionDefinitions = new FunctionDefinitions(buildContext)
-  private val structures = new Structures(buildContext)
+  private val structures = new Structures(buildContext, functionDefinitions, functionCalls)
 
   override def visitProgram(ctx: ProgramContext): Option[Value] = {
     ctx.children.foreach(childCtx => visit(childCtx))
@@ -43,6 +43,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
 
   override def visitFieldWrite(ctx: FieldWriteContext): Option[Value] =
     Some(structures.writeAccess(ctx))
+
+
+  override def visitMethodCall(ctx: MethodCallContext): Option[Value] =
+    Some(structures.methodCall(ctx))
 
   override def visitBoolConst(ctx: BoolConstContext): Option[Value] =
     Some(constants.bool(ctx))

@@ -1,7 +1,9 @@
 package mekhanikov.compiler.definitions
 
 import mekhanikov.compiler.ProgramParser._
-import mekhanikov.compiler.entities.struct.{Field, Struct, Visibility}
+import mekhanikov.compiler.entities.struct.Visibility.Visibility
+import mekhanikov.compiler.entities.struct.{Field, Method, Struct, Visibility}
+import mekhanikov.compiler.expressions.FunctionCalls
 import mekhanikov.compiler.types.Primitives
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.antlr.v4.runtime.ParserRuleContext
@@ -9,16 +11,35 @@ import org.bytedeco.javacpp.LLVM._
 
 import scala.collection.JavaConversions._
 
-class Structures(val buildContext: BuildContext) {
+class Structures(buildContext: BuildContext,
+                 functionDefinitions: FunctionDefinitions,
+                 functionCalls: FunctionCalls) {
 
   val builder = buildContext.builder
   val visitor = buildContext.visitor
 
   def struct(ctx: StructDefContext): Unit = {
     val structName = ctx.ID.getText
-    val fields = getFields(ctx.fieldDecl)
-    val struct = new Struct(structName, fields)
+    val struct = new Struct(structName, List(), List())
     buildContext.structures(structName) = struct
+    buildContext.currentStructure = Some(struct)
+    ctx.memberDecl.foreach { memberDeclCtx =>
+      val visibility = if (Option(memberDeclCtx.PRIVATE).isDefined) {
+        Visibility.PRIVATE
+      } else {
+        Visibility.PUBLIC
+      }
+      Option(memberDeclCtx.fieldDecl) match {
+        case Some(fieldDeclCtx) =>
+          struct.fields ++= getFields(fieldDeclCtx, visibility)
+        case None =>
+          val methodDefContext = memberDeclCtx.functionDef()
+          val function = functionDefinitions.function(methodDefContext)
+          val method = new Method(function, visibility)
+          struct.methods ::= method
+      }
+    }
+    buildContext.currentStructure = None
   }
 
   def newExpr(ctx: NewExprContext): Value = {
@@ -63,7 +84,30 @@ class Structures(val buildContext: BuildContext) {
     value
   }
 
-  def findFieldWithIndex(value: Value, fieldName: String, ctx: ParserRuleContext): (Field, Int) = {
+  def methodCall(ctx: MethodCallContext): Value = {
+    val expr = visitor.visit(ctx.expression).get
+    if (!expr.valType.isInstanceOf[Struct]) {
+      throw new CompilationException(ctx, "Cannot invoke method of a primitive")
+    }
+    val struct = expr.valType.asInstanceOf[Struct]
+    val methodName = ctx.ID.getText
+    val optMethod = struct.methods.find(method => method.function.name == s"${struct.name}/$methodName")
+    optMethod match {
+      case Some(method) =>
+        var args = List(expr)
+        Option(ctx.expressionList) match {
+          case Some(expressionListCtx) =>
+            args ++= expressionListCtx.expression.map(exprCtx => visitor.visit(exprCtx).get)
+          case None =>
+        }
+        val result = functionCalls.buildCall(method.function, args, ctx)
+        result
+      case None =>
+        throw new CompilationException(ctx, s"Struct ${struct.name} doesn't have a method $methodName")
+    }
+  }
+
+  private def findFieldWithIndex(value: Value, fieldName: String, ctx: ParserRuleContext): (Field, Int) = {
     if (Primitives.isPrimitive(value.valType)) {
       throw new CompilationException(ctx, "Cannot access a field of a primitive value")
     }
@@ -83,19 +127,12 @@ class Structures(val buildContext: BuildContext) {
     }
   }
 
-  private def getFields(fieldsDecl: Iterable[FieldDeclContext]): List[Field] = {
-    fieldsDecl.flatMap { fieldDeclCtx =>
-      val visibility = if (Option(fieldDeclCtx.PRIVATE).isDefined) {
-        Visibility.PRIVATE
-      } else {
-        Visibility.PUBLIC
-      }
-      val ids = fieldDeclCtx.ID
-      val fieldType = buildContext.findType(ids(0).getText, fieldDeclCtx)
-      val fieldNames = ids.subList(1, ids.size)
-      fieldNames.map { fieldNameCtx =>
-        new Field(fieldNameCtx.getText, fieldType, visibility)
-      }
+  private def getFields(fieldsDeclCtx: FieldDeclContext, visibility: Visibility): List[Field] = {
+    val ids = fieldsDeclCtx.ID
+    val fieldType = buildContext.findType(ids(0).getText, fieldsDeclCtx)
+    val fieldNames = ids.subList(1, ids.size)
+    fieldNames.map { fieldNameCtx =>
+      new Field(fieldNameCtx.getText, fieldType, visibility)
     }.toList
   }
 }
