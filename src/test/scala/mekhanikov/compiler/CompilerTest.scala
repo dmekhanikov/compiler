@@ -237,16 +237,30 @@ class CompilerTest {
       """.stripMargin)
     expectSemanticException(
       """int box(int x, int y) { return x; }
-        |int box(int x, bool y) { return x; }
-      """.stripMargin)
-    expectSemanticException(
-      """int box(int x, int y) { return x; }
-        |int box(int x) { return x; }
-      """.stripMargin)
-    expectSemanticException(
-      """int box(int x, int y) { return x; }
         |bool box(int x, int y) { return true; }
       """.stripMargin)
+  }
+
+  @Test
+  def functionOverload(): Unit = {
+    val src =
+      """int add(int x, int y) { return x + y; }
+        |int add(int x, bool y) {
+        |   int result = x;
+        |   if (y) {
+        |       result = x + 1;
+        |   } else {}
+        |   return result;
+        |}
+        |bool add(bool x, bool y) { return x != y; }
+        |bool box() {
+        |   int a = add(2, 5);
+        |   int b = add(3, true);
+        |   bool c = add(true, false);
+        |   return a == 7 && b == 4 && c;
+        |}
+      """.stripMargin
+    runTest(src, 1)
   }
 
   @Test
@@ -556,6 +570,35 @@ class CompilerTest {
         |   Rectangle r2 = constructRectangle(4, 5);
         |   Rectangle r3 = constructRectangle(5, 6);
         |   return r1.equals(r2) && (r1.equals(r3) == false);
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
+
+  @Test
+  def structMethodsOverload(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   int w, h;
+        |   bool equals(Rectangle other) {
+        |     return this.w == other.w && this.h == other.h;
+        |   }
+        |   bool equals(int w, int h) {
+        |     return this.w == w && this.h == h;
+        |   }
+        |}
+        |Rectangle constructRectangle(int w, int h) {
+        |   Rectangle r = new Rectangle;
+        |   r.w = w;
+        |   r.h = h;
+        |   return r;
+        |}
+        |bool box() {
+        |   Rectangle r1 = constructRectangle(1, 2);
+        |   Rectangle r2 = constructRectangle(1, 2);
+        |   Rectangle r3 = constructRectangle(3, 4);
+        |   return r1.equals(r2) && r1.equals(1, 2) &&
+        |         (r1.equals(r3) == false) && (r1.equals(3, 4) == false);
         |}
       """.stripMargin
     runTest(src, 1)

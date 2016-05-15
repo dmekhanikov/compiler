@@ -91,19 +91,23 @@ class Structures(buildContext: BuildContext,
     }
     val struct = expr.valType.asInstanceOf[Struct]
     val methodName = ctx.ID.getText
-    val optMethod = struct.methods.find(method => method.function.name == s"${struct.name}/$methodName")
+    var args = List(expr)
+    Option(ctx.expressionList) match {
+      case Some(expressionListCtx) =>
+        args ++= expressionListCtx.expression.map(exprCtx => visitor.visit(exprCtx).get)
+      case None =>
+    }
+    val argTypes = args.map(arg => arg.valType)
+    val optMethod = struct.methods.find(method =>
+      method.function.name == s"${struct.name}/$methodName" &&
+      method.function.argTypes == argTypes)
     optMethod match {
       case Some(method) =>
-        var args = List(expr)
-        Option(ctx.expressionList) match {
-          case Some(expressionListCtx) =>
-            args ++= expressionListCtx.expression.map(exprCtx => visitor.visit(exprCtx).get)
-          case None =>
-        }
         val result = functionCalls.buildCall(method.function, args, ctx)
         result
       case None =>
-        throw new CompilationException(ctx, s"Struct ${struct.name} doesn't have a method $methodName")
+        val signature = buildContext.functionSignature(methodName, argTypes)
+        throw new CompilationException(ctx, s"Struct ${struct.name} doesn't have a method with signature $signature")
     }
   }
 

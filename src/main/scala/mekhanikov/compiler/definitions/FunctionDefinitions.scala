@@ -22,9 +22,6 @@ class FunctionDefinitions(val buildContext: BuildContext) {
         s"${struct.name}/$functionName"
       case None => functionName
     }
-    if (Option(LLVMGetNamedFunction(buildContext.module, llvmFunctionName)).isDefined) {
-      throw new CompilationException(ctx, "function with this name already exists")
-    }
     var argTypes = Option(ctx.parameterList) match {
       case Some(parameterList) =>
         parameterList.parameter.map {parCtx =>
@@ -35,10 +32,17 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     if (currentStruct.isDefined) {
         argTypes ::= currentStruct.get
     }
-    val llvmFunction = buildContext.createFunction(llvmFunctionName, returnType, argTypes)
+    val llvmFunction =
+      try {
+        buildContext.createFunction(llvmFunctionName, returnType, argTypes)
+      } catch {
+        case e: IllegalArgumentException =>
+          throw new CompilationException(ctx, e.getMessage)
+      }
     val function = new Function(llvmFunctionName, returnType, argTypes, llvmFunction)
+    val signature = buildContext.functionSignature(function.name, function.argTypes)
     buildContext.currentFunction = Some(llvmFunction)
-    buildContext.functions(functionName) = function
+    buildContext.functions(signature) = function
     buildContext.variables.clear()
     val di = if (currentStruct.isDefined) {
         addVariable("this", currentStruct.get, llvmFunction, 0)

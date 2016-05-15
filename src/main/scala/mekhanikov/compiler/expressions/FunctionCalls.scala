@@ -18,18 +18,19 @@ class FunctionCalls(val buildContext: BuildContext) {
 
   def call(ctx: FunctionCallContext): Value = {
     val functionName = ctx.ID.getSymbol.getText
-    Option(LLVMGetNamedFunction(module, functionName)) match {
-      case None =>
-        throw new CompilationException(ctx, s"call to an undeclared function: $functionName")
-      case Some(llvmFunction) =>
-        val function = buildContext.functions(functionName)
-        val args = Option(ctx.expressionList) match {
-          case Some(argsExpr) =>
-            argsExpr.expression.foldRight(List[Value]()) { (exprCtx, r) =>
-              visitor.visit(exprCtx).get :: r
-            }
-          case None => List()
+    val args = Option(ctx.expressionList) match {
+      case Some(argsExpr) =>
+        argsExpr.expression.foldRight(List[Value]()) { (exprCtx, r) =>
+          visitor.visit(exprCtx).get :: r
         }
+      case None => List()
+    }
+    val argTypes = args.map { arg => arg.valType }
+    val functionSignature = buildContext.functionSignature(functionName, argTypes)
+    buildContext.functions.get(functionSignature) match {
+      case None =>
+        throw new CompilationException(ctx, s"call to an undeclared function: $functionSignature")
+      case Some(function) =>
         buildCall(function, args, ctx)
     }
   }

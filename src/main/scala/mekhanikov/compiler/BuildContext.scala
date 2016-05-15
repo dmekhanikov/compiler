@@ -92,9 +92,21 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
     functions(readIntFunName) = new Function(readIntFunName, Primitives.INT, List(), readIntFun)
   }
 
+  def functionSignature(name: String, argTypes: Seq[Type]): String = {
+    val sb = new StringBuilder(name)
+    for (argType <- argTypes) {
+      sb.append(' ').append(argType.name)
+    }
+    sb.toString
+  }
+
   def createFunction(name: String, returnType: Type, argTypes: Seq[Type]): LLVMValueRef = {
     val argTypeRefs = new PointerPointer(argTypes.map(argType => argType.toLLVMType):_*)
-    val function = LLVMAddFunction(module, name, LLVMFunctionType(returnType.toLLVMType, argTypeRefs, argTypes.size, 0))
+    val signature = functionSignature(name, argTypes)
+    if (Option(LLVMGetNamedFunction(module, signature)).isDefined) {
+      throw new IllegalArgumentException("function with this signature already exists: " + signature)
+    }
+    val function = LLVMAddFunction(module, signature, LLVMFunctionType(returnType.toLLVMType, argTypeRefs, argTypes.size, 0))
     LLVMSetFunctionCallConv(function, LLVMCCallConv)
     val entry = LLVMAppendBasicBlock(function, "entry")
     LLVMPositionBuilderAtEnd(builder, entry)
