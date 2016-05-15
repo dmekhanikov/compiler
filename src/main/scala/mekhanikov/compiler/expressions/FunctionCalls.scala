@@ -20,7 +20,7 @@ class FunctionCalls(val buildContext: BuildContext) {
     val functionName = ctx.ID.getSymbol.getText
     Option(LLVMGetNamedFunction(module, functionName)) match {
       case None =>
-        throw new CompilationException(ctx, "call to an undeclared function")
+        throw new CompilationException(ctx, s"call to an undeclared function: $functionName")
       case Some(llvmFunction) =>
         val function = buildContext.functions(functionName)
         val args = Option(ctx.expressionList) match {

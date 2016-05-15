@@ -398,19 +398,18 @@ class CompilerTest {
   def returnStructFromFunction(): Unit = {
     val src =
       """struct A { int a; }
-        |A constructA() {
-        |   A a;
-        |   a = new A;
-        |   a.a = 5;
+        |A constructA(int val) {
+        |   A a = new A;
+        |   a.a = val;
         |   return a;
         |}
-        |int box() {
-        |   A a;
-        |   a = constructA();
-        |   return a.a;
+        |bool box() {
+        |   A a1 = constructA(5);
+        |   A a2 = constructA(6);
+        |   return a1.a == 5 && a2.a == 6;
         |}
       """.stripMargin
-    runTest(src, 5)
+    runTest(src, 1)
   }
 
   @Test

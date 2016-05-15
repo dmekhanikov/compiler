@@ -48,7 +48,7 @@ class Structures(buildContext: BuildContext,
       throw new CompilationException(ctx, "No such structure: " + structName)
     }
     val struct = buildContext.structures(structName)
-    val llvmValue = LLVMBuildAlloca(builder, struct.toLLVMStructType, structName)
+    val llvmValue = LLVMBuildMalloc(builder, struct.toLLVMStructType, structName)
     struct.fields.zipWithIndex.foreach { case (field, i) =>
       val elementPtr = LLVMBuildStructGEP(builder, llvmValue, i, "fieldPtr")
       val initValue = if (field.fieldType.isInstanceOf[Struct]) {
