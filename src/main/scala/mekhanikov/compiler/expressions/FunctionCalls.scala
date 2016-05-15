@@ -40,7 +40,9 @@ class FunctionCalls(val buildContext: BuildContext) {
       throw new CompilationException(ctx, "wrong function signature")
     }
     val llvmArgs = args.map(arg => arg.value)
-    val callRes = LLVMBuildCall(builder, function.llvmFunction, new PointerPointer(llvmArgs: _*), args.size, "call")
+    val resultPrefix =
+      if (function.returnType != Primitives.VOID) "call" else ""
+    val callRes = LLVMBuildCall(builder, function.llvmFunction, new PointerPointer(llvmArgs: _*), args.size, resultPrefix)
     function.returnType match {
       case Primitives.VOID => Value.VOID
       case _ =>

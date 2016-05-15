@@ -142,6 +142,18 @@ class CompilerTest {
   }
 
   @Test
+  def voidFunction(): Unit = {
+    val src =
+      """void foo() { return; }
+        |int box() {
+        |   foo();
+        |   return 42;
+        |}
+      """.stripMargin
+    runTest(src, 42)
+  }
+
+  @Test
   def missingSemicolon(): Unit = {
     expectSyntaxException("void box() { return }")
     expectSyntaxException(
