@@ -551,16 +551,11 @@ class CompilerTest {
         |   r.h = h;
         |   return r;
         |}
-        |int box() {
+        |bool box() {
         |   Rectangle r1 = constructRectangle(4, 5);
         |   Rectangle r2 = constructRectangle(4, 5);
-        |   int result;
-        |   if (r1.equals(r2)) {
-        |     result = 1;
-        |   } else {
-        |     result = 0;
-        |   }
-        |   return result;
+        |   Rectangle r3 = constructRectangle(5, 6);
+        |   return r1.equals(r2) && (r1.equals(r3) == false);
         |}
       """.stripMargin
     runTest(src, 1)

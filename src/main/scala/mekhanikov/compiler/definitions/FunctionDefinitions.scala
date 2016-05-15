@@ -40,32 +40,17 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     buildContext.currentFunction = Some(llvmFunction)
     buildContext.functions(functionName) = function
     buildContext.variables.clear()
-    Option(ctx.parameterList) match {
-      case Some(parameterList) =>
-        val di = if (currentStruct.isDefined) 1 else 0
-        for (i <- 0 until parameterList.parameter.size + di) {
-          val (varType: Type, varName: String) =
-            if (i == 0 && currentStruct.isDefined) {
-              (currentStruct.get, "this")
-            } else {
-              val parCtx = parameterList.parameter(i - di)
-              val typeName = parCtx.ID(0).getText
-              (buildContext.findType(typeName, parCtx), parCtx.ID(1).getText)
-            }
-          addVariable(varName, varType, llvmFunction, i)
-        }
-        for ((parCtx, i) <- parameterList.parameter.zipWithIndex) {
-          val varType = buildContext.findType(parCtx.ID(0).getText, parCtx)
-          val varName = parCtx.ID(1).getText
-          val value = LLVMGetParam(llvmFunction, i)
-          val parameter = new Variable(varType, varName)
-          parameter.value = new Value(varType, value)
-          buildContext.variables(varName) = parameter
-        }
-      case None =>
-        if (currentStruct.isDefined) {
-          addVariable("this", currentStruct.get, llvmFunction, 0)
-        }
+    val di = if (currentStruct.isDefined) {
+        addVariable("this", currentStruct.get, llvmFunction, 0)
+        1
+      } else 0
+    if (Option(ctx.parameterList).isDefined) {
+      for ((parCtx, i) <- ctx.parameterList.parameter.zipWithIndex) {
+        val typeName = parCtx.ID(0).getText
+        val varType = buildContext.findType(typeName, parCtx)
+        val varName = parCtx.ID(1).getText
+        addVariable(varName, varType, llvmFunction, i + di)
+      }
     }
     ctx.varDecl.foreach(visitor.visit)
     ctx.statement.foreach(visitor.visit)
@@ -74,7 +59,7 @@ class FunctionDefinitions(val buildContext: BuildContext) {
   }
 
   private def addVariable(varName: String, varType: Type, llvmFunction: LLVMValueRef, i: Int): Unit = {
-    val value = LLVMGetParam(llvmFunction, 0)
+    val value = LLVMGetParam(llvmFunction, i)
     val parameter = new Variable(varType, varName)
     parameter.value = new Value(varType, value)
     buildContext.variables(varName) = parameter
@@ -87,7 +72,7 @@ class FunctionDefinitions(val buildContext: BuildContext) {
         if (returned.valType == returnType) {
           LLVMBuildRet(builder, returned.value)
         } else {
-          throw new CompilationException(ctx, s"expecting expression of type $returnType, but was: ${returned.valType.name}")
+          throw new CompilationException(ctx, s"expecting expression of type ${returnType.name}, but was: ${returned.valType.name}")
         }
       case None =>
         if (returnType == Primitives.VOID) {
