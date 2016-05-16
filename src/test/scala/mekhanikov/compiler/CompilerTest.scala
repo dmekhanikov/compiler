@@ -668,4 +668,131 @@ class CompilerTest {
         |}
       """.stripMargin)
   }
+
+  @Test
+  def defaultSuperConstructor(): Unit = {
+    val src =
+      """struct A { int a; }
+        |struct B : A { int b; }
+        |bool box() {
+        |   B b = new B();
+        |   return b.a == 0 && b.b == 0;
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
+
+  @Test
+  def returningSubtype(): Unit = {
+    val src =
+      """struct A { int a; }
+        |struct B : A {
+        |   int b;
+        |   constructor(int a, int b) {
+        |     this.a = a;
+        |     this.b = b;
+        |   }
+        |}
+        |A makeA() { return new B(23, 42); }
+        |int box() {
+        |   A a = makeA();
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 23)
+  }
+
+  @Test
+  def assigningToSubtype(): Unit = {
+    val src =
+      """struct A {
+        |   int a;
+        |}
+        |struct B : A {
+        |   constructor(int a) { this.a = a; }
+        |}
+        |int box() {
+        |   A a;
+        |   a = new B(4);
+        |   return a.a;
+        |}
+        """.stripMargin
+    runTest(src, 4)
+  }
+
+  @Test
+  def initWithSubtype(): Unit = {
+    val src =
+      """struct A {
+        |   int a;
+        |}
+        |struct B : A {
+        |   constructor(int a) { this.a = a; }
+        |}
+        |int box() {
+        |   A a = new B(4);
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 4)
+  }
+
+  @Test
+  def functionsContravariantByArguments(): Unit = {
+    val src =
+      """struct A { int a; }
+        |struct B : A {
+        |   int b;
+        |   constructor(int a, int b) {
+        |       this.a = a;
+        |       this.b = b;
+        |   }
+        |}
+        |int getA(A a) {
+        |   return a.a;
+        |}
+        |int box() {
+        |   B b = new B(23, 42);
+        |   return getA(b);
+        |}
+      """.stripMargin
+    runTest(src, 23)
+  }
+
+  @Test
+  def inheritingMethods(): Unit = {
+    val src =
+      """struct A {
+        |   private int a;
+        |   int getA() { return this.a; }
+        |}
+        |struct B : A {
+        |   constructor(int a) { this.a = a; }
+        |}
+        |int box() {
+        |   B b = new B(5);
+        |   return b.getA();
+        |}
+      """.stripMargin
+    runTest(src, 5)
+  }
+
+  @Test
+  def inheritingFields(): Unit = {
+    val src =
+      """struct A {
+        |   int a;
+        |   int b;
+        |}
+        |struct B : A {
+        |   constructor(int a) { this.a = a; }
+        |}
+        |bool box() {
+        |   B b = new B(5);
+        |   b.b = 2;
+        |   return b.a == 5 && b.b == 2;
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
 }
