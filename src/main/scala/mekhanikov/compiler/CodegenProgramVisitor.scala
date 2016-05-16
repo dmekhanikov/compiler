@@ -99,6 +99,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
 
   override def visitExprStmt(ctx: ExprStmtContext): Option[Value] = {
     visit(ctx.expression)
+    None
   }
 
   override def visitBlock(ctx: BlockContext): Option[Value] = {

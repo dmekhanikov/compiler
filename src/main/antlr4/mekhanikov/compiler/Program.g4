@@ -50,8 +50,12 @@ functionDef
     : ID ID '(' parameterList? ')' '{'
         varDecl*
         statement*
-        'return' expression? ';'
+        returnStmt?
       '}'
+    ;
+
+returnStmt
+    : 'return' expression? ';'
     ;
 
 varDecl

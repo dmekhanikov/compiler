@@ -181,13 +181,27 @@ class CompilerTest {
 
   @Test
   def missingReturn(): Unit = {
-    expectSyntaxException(
-      """void box() {
+    expectSemanticException(
+      """int box() {
         |    int a;
         |    a = 1;
         |    b = 2;
         |}
       """.stripMargin)
+  }
+
+  @Test
+  def noVoidReturn(): Unit = {
+    val src =
+      """struct A { int a; }
+        |void setA(A a, int val) { a.a = val; }
+        |int box() {
+        |   A a = new A;
+        |   setA(a, 5);
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 5)
   }
 
   @Test

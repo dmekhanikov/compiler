@@ -1,6 +1,6 @@
 package mekhanikov.compiler.definitions
 
-import mekhanikov.compiler.ProgramParser.FunctionDefContext
+import mekhanikov.compiler.ProgramParser.{FunctionDefContext, ReturnStmtContext}
 import mekhanikov.compiler._
 import mekhanikov.compiler.entities.{Function, Variable}
 import mekhanikov.compiler.types.{Primitives, Type}
@@ -69,21 +69,18 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     buildContext.variables(varName) = parameter
   }
 
-  private def buildReturn(ctx: FunctionDefContext, returnType: Type): Unit = {
-    Option(ctx.expression) match {
-      case Some(returnExpr) =>
-        val returned = visitor.visit(returnExpr).get
-        if (returned.valType == returnType) {
-          LLVMBuildRet(builder, returned.value)
-        } else {
-          throw new CompilationException(ctx, s"expecting expression of type ${returnType.name}, but was: ${returned.valType.name}")
-        }
-      case None =>
-        if (returnType == Primitives.VOID) {
-          LLVMBuildRetVoid(builder)
-        } else {
-          throw new CompilationException(ctx, "cannot return void from this function")
-        }
+  def buildReturn(ctx: FunctionDefContext, returnType: Type): Unit = {
+    if (Option(ctx.returnStmt).isDefined && Option(ctx.returnStmt.expression).isDefined) {
+      val returned = visitor.visit(ctx.returnStmt.expression).get
+      if (returned.valType == returnType) {
+        LLVMBuildRet(builder, returned.value)
+      } else {
+        throw new CompilationException(ctx, s"expecting expression of type ${returnType.name}, but was: ${returned.valType.name}")
+      }
+    } else if (returnType == Primitives.VOID) {
+      LLVMBuildRetVoid(builder)
+    } else {
+      throw new CompilationException(ctx, "cannot return void from this function")
     }
   }
 }
