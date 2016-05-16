@@ -1,6 +1,7 @@
 package mekhanikov.compiler.definitions
 
 import mekhanikov.compiler.ProgramParser._
+import mekhanikov.compiler.entities.Function
 import mekhanikov.compiler.entities.struct.Visibility.Visibility
 import mekhanikov.compiler.entities.struct.{Field, Method, Struct, Visibility}
 import mekhanikov.compiler.expressions.FunctionCalls
@@ -8,15 +9,17 @@ import mekhanikov.compiler.types.Primitives
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
+import org.bytedeco.javacpp.PointerPointer
 
 import scala.collection.JavaConversions._
 
 class Structures(buildContext: BuildContext,
                  functionDefinitions: FunctionDefinitions,
                  functionCalls: FunctionCalls) {
-
-  val builder = buildContext.builder
-  val visitor = buildContext.visitor
+  private val CONSTRUCTOR_METHOD_NAME = "~constructor"
+  private val INIT_METHOD_NAME = "~init"
+  private val builder = buildContext.builder
+  private val visitor = buildContext.visitor
 
   def struct(ctx: StructDefContext): Unit = {
     val structName = ctx.ID.getText
@@ -29,17 +32,51 @@ class Structures(buildContext: BuildContext,
       } else {
         Visibility.PUBLIC
       }
-      Option(memberDeclCtx.fieldDecl) match {
-        case Some(fieldDeclCtx) =>
-          struct.fields ++= getFields(fieldDeclCtx, visibility)
-        case None =>
-          val methodDefContext = memberDeclCtx.functionDef()
-          val function = functionDefinitions.function(methodDefContext)
-          val method = new Method(function, visibility)
-          struct.methods ::= method
+      if (Option(memberDeclCtx.fieldDecl).isDefined) {
+        struct.fields ++= getFields(memberDeclCtx.fieldDecl, visibility)
+      } else if (Option(memberDeclCtx.functionDef).isDefined) {
+        val function = functionDefinitions.function(memberDeclCtx.functionDef)
+        val method = new Method(function, visibility)
+        struct.methods ::= method
+      } else {
+        val constructorFunction = functionDefinitions.functionBody(
+          memberDeclCtx.constructorDef.functionBody,
+          CONSTRUCTOR_METHOD_NAME,
+          Primitives.VOID,
+          Option(memberDeclCtx.constructorDef.parameterList))
+        val method = new Method(constructorFunction, visibility)
+        struct.methods ::= method
       }
     }
+    val initMethod = createInitMethod(struct, ctx)
+    if (!ctx.memberDecl.exists(memberDecl => Option(memberDecl.constructorDef).isDefined)) {
+      val llvmInitFunction = initMethod.function.llvmFunction
+      val constructorQualifiedName = s"${struct.name}/$CONSTRUCTOR_METHOD_NAME"
+      val defaultConstructorFunction = new Function(constructorQualifiedName, Primitives.VOID, List(struct), llvmInitFunction)
+      val constructor = new Method(defaultConstructorFunction, Visibility.PUBLIC)
+      struct.methods ::= constructor
+    }
     buildContext.currentStructure = None
+  }
+
+  def createInitMethod(struct: Struct, ctx: StructDefContext): Method = {
+    val function = functionDefinitions.functionHead(INIT_METHOD_NAME, Primitives.VOID, None, ctx)
+
+    val thisRef = LLVMGetParam(function.llvmFunction, 0)
+    struct.fields.zipWithIndex.foreach { case (field, i) =>
+      val elementPtr = LLVMBuildStructGEP(builder, thisRef, i, "fieldPtr")
+      val initValue = if (field.fieldType.isInstanceOf[Struct]) {
+        LLVMConstPointerNull(field.fieldType.toLLVMType)
+      } else {
+        LLVMConstNull(field.fieldType.toLLVMType)
+      }
+      LLVMBuildStore(builder, initValue, elementPtr)
+    }
+    LLVMBuildRetVoid(builder)
+
+    val method = new Method(function, Visibility.PRIVATE)
+    struct.methods ::= method
+    method
   }
 
   def newExpr(ctx: NewExprContext): Value = {
@@ -49,16 +86,10 @@ class Structures(buildContext: BuildContext,
     }
     val struct = buildContext.structures(structName)
     val llvmValue = LLVMBuildMalloc(builder, struct.toLLVMStructType, structName)
-    struct.fields.zipWithIndex.foreach { case (field, i) =>
-      val elementPtr = LLVMBuildStructGEP(builder, llvmValue, i, "fieldPtr")
-      val initValue = if (field.fieldType.isInstanceOf[Struct]) {
-        LLVMConstPointerNull(field.fieldType.toLLVMType)
-      } else {
-        LLVMConstNull(field.fieldType.toLLVMType)
-      }
-      LLVMBuildStore(builder, initValue, elementPtr)
-    }
-    new Value(struct, llvmValue)
+    val thisValue = new Value(struct, llvmValue)
+    buildCall(thisValue, INIT_METHOD_NAME, None, ctx)
+    buildCall(thisValue, CONSTRUCTOR_METHOD_NAME, Option(ctx.expressionList), ctx)
+    thisValue
   }
 
   def readAccess(ctx: FieldReadContext): Value = {
@@ -89,25 +120,32 @@ class Structures(buildContext: BuildContext,
     if (!expr.valType.isInstanceOf[Struct]) {
       throw new CompilationException(ctx, "Cannot invoke method of a primitive")
     }
-    val struct = expr.valType.asInstanceOf[Struct]
     val methodName = ctx.ID.getText
-    var args = List(expr)
-    Option(ctx.expressionList) match {
-      case Some(expressionListCtx) =>
-        args ++= expressionListCtx.expression.map(exprCtx => visitor.visit(exprCtx).get)
+    buildCall(expr, methodName, Option(ctx.expressionList), ctx)
+  }
+
+  private def buildCall(thisRef: Value,
+                        methodName: String,
+                        expressionListCtx: Option[ExpressionListContext],
+                        callCtx: ParserRuleContext): Value = {
+    val struct = thisRef.valType.asInstanceOf[Struct]
+    var args = List(thisRef)
+    expressionListCtx match {
+      case Some(expressionList) =>
+        args ++= expressionList.expression.map(exprCtx => visitor.visit(exprCtx).get)
       case None =>
     }
     val argTypes = args.map(arg => arg.valType)
     val optMethod = struct.methods.find(method =>
       method.function.name == s"${struct.name}/$methodName" &&
-      method.function.argTypes == argTypes)
+        method.function.argTypes == argTypes)
     optMethod match {
       case Some(method) =>
-        val result = functionCalls.buildCall(method.function, args, ctx)
+        val result = functionCalls.buildCall(method.function, args, callCtx)
         result
       case None =>
         val signature = buildContext.functionSignature(methodName, argTypes)
-        throw new CompilationException(ctx, s"Struct ${struct.name} doesn't have a method with signature $signature")
+        throw new CompilationException(callCtx, s"Struct ${struct.name} doesn't have a method with signature $signature")
     }
   }
 

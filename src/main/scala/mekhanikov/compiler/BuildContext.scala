@@ -100,9 +100,8 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
     sb.toString
   }
 
-  def createFunction(name: String, returnType: Type, argTypes: Seq[Type]): LLVMValueRef = {
+  def createFunction(signature: String, returnType: Type, argTypes: Seq[Type]): LLVMValueRef = {
     val argTypeRefs = new PointerPointer(argTypes.map(argType => argType.toLLVMType):_*)
-    val signature = functionSignature(name, argTypes)
     if (Option(LLVMGetNamedFunction(module, signature)).isDefined) {
       throw new IllegalArgumentException("function with this signature already exists: " + signature)
     }

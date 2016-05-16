@@ -17,7 +17,7 @@ expression
     | expression SIGN expression                        #sum
     | expression CMP expression                         #comparison
     | expression JUNCTION expression                    #junction
-    | 'new' ID                                          #newExpr
+    | 'new' ID '(' expressionList? ')'                  #newExpr
     | <assoc=right> expression '.' ID '=' expression    #fieldWrite
     | <assoc=right> ID '=' expression                   #varAssignment
     ;
@@ -39,7 +39,7 @@ structDef
     ;
 
 memberDecl
-    : PRIVATE? (fieldDecl | functionDef)
+    : PRIVATE? (fieldDecl | functionDef | constructorDef)
     ;
 
 fieldDecl
@@ -47,11 +47,19 @@ fieldDecl
     ;
 
 functionDef
-    : ID ID '(' parameterList? ')' '{'
-        varDecl*
-        statement*
-        returnStmt?
-      '}'
+    : ID ID '(' parameterList? ')' functionBody
+    ;
+
+constructorDef
+    : 'constructor' '(' parameterList? ')' functionBody
+    ;
+
+functionBody:
+    '{'
+      varDecl*
+      statement*
+      returnStmt?
+    '}'
     ;
 
 returnStmt

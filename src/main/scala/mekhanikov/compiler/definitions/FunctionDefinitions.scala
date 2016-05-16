@@ -1,9 +1,11 @@
 package mekhanikov.compiler.definitions
 
-import mekhanikov.compiler.ProgramParser.{FunctionDefContext, ReturnStmtContext}
+import mekhanikov.compiler.ProgramParser.{FunctionBodyContext, FunctionDefContext, ParameterListContext}
 import mekhanikov.compiler._
+import mekhanikov.compiler.entities.struct.Struct
 import mekhanikov.compiler.entities.{Function, Variable}
 import mekhanikov.compiler.types.{Primitives, Type}
+import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
 
 import scala.collection.JavaConversions._
@@ -15,51 +17,65 @@ class FunctionDefinitions(val buildContext: BuildContext) {
 
   def function(ctx: FunctionDefContext): Function = {
     val returnType = buildContext.findType(ctx.ID(0).getText, ctx)
-    val currentStruct = buildContext.currentStructure
     val functionName = ctx.ID(1).getText
-    val llvmFunctionName = currentStruct match {
+    functionBody(ctx.functionBody, functionName, returnType, Option(ctx.parameterList))
+  }
+
+  def functionBody(functionBodyCtx: FunctionBodyContext,
+                   functionName: String,
+                   returnType: Type,
+                   parameterListCtx: Option[ParameterListContext]): Function = {
+    val function = functionHead(functionName, returnType, parameterListCtx, functionBodyCtx)
+    val functionSignature = buildContext.functionSignature(function.name, function.argTypes)
+    buildContext.currentFunction = Some(function.llvmFunction)
+    buildContext.functions(functionSignature) = function
+    buildContext.variables.clear()
+    val di = if (buildContext.currentStructure.isDefined) {
+      addVariable("this", buildContext.currentStructure.get, function.llvmFunction, 0)
+      1
+    } else 0
+    if (parameterListCtx.isDefined) {
+      for ((parCtx, i) <- parameterListCtx.get.parameter.zipWithIndex) {
+        val typeName = parCtx.ID(0).getText
+        val varType = buildContext.findType(typeName, parCtx)
+        val varName = parCtx.ID(1).getText
+        addVariable(varName, varType, function.llvmFunction, i + di)
+      }
+    }
+    functionBodyCtx.varDecl.foreach(visitor.visit)
+    functionBodyCtx.statement.foreach(visitor.visit)
+    buildReturn(functionBodyCtx, returnType)
+    function
+  }
+
+  def functionHead(functionName: String,
+                   returnType: Type,
+                   parameterListCtx: Option[ParameterListContext],
+                   parentContext: ParserRuleContext): Function = {
+    val qualifiedFunctionName = buildContext.currentStructure match {
       case Some(struct) =>
         s"${struct.name}/$functionName"
       case None => functionName
     }
-    var argTypes = Option(ctx.parameterList) match {
+    var argTypes = parameterListCtx match {
       case Some(parameterList) =>
         parameterList.parameter.map {parCtx =>
-          buildContext.findType(parCtx.ID(0).getText, ctx)
+          buildContext.findType(parCtx.ID(0).getText, parentContext)
         }.toList
       case None => List()
     }
-    if (currentStruct.isDefined) {
-        argTypes ::= currentStruct.get
+    if (buildContext.currentStructure.isDefined) {
+      argTypes ::= buildContext.currentStructure.get
     }
+    val functionSignature = buildContext.functionSignature(qualifiedFunctionName, argTypes)
     val llvmFunction =
       try {
-        buildContext.createFunction(llvmFunctionName, returnType, argTypes)
+        buildContext.createFunction(functionSignature, returnType, argTypes)
       } catch {
         case e: IllegalArgumentException =>
-          throw new CompilationException(ctx, e.getMessage)
+          throw new CompilationException(parentContext, e.getMessage)
       }
-    val function = new Function(llvmFunctionName, returnType, argTypes, llvmFunction)
-    val signature = buildContext.functionSignature(function.name, function.argTypes)
-    buildContext.currentFunction = Some(llvmFunction)
-    buildContext.functions(signature) = function
-    buildContext.variables.clear()
-    val di = if (currentStruct.isDefined) {
-        addVariable("this", currentStruct.get, llvmFunction, 0)
-        1
-      } else 0
-    if (Option(ctx.parameterList).isDefined) {
-      for ((parCtx, i) <- ctx.parameterList.parameter.zipWithIndex) {
-        val typeName = parCtx.ID(0).getText
-        val varType = buildContext.findType(typeName, parCtx)
-        val varName = parCtx.ID(1).getText
-        addVariable(varName, varType, llvmFunction, i + di)
-      }
-    }
-    ctx.varDecl.foreach(visitor.visit)
-    ctx.statement.foreach(visitor.visit)
-    buildReturn(ctx, returnType)
-    function
+    new Function(qualifiedFunctionName, returnType, argTypes, llvmFunction)
   }
 
   private def addVariable(varName: String, varType: Type, llvmFunction: LLVMValueRef, i: Int): Unit = {
@@ -69,7 +85,7 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     buildContext.variables(varName) = parameter
   }
 
-  def buildReturn(ctx: FunctionDefContext, returnType: Type): Unit = {
+  def buildReturn(ctx: FunctionBodyContext, returnType: Type): Unit = {
     if (Option(ctx.returnStmt).isDefined && Option(ctx.returnStmt.expression).isDefined) {
       val returned = visitor.visit(ctx.returnStmt.expression).get
       if (returned.valType == returnType) {

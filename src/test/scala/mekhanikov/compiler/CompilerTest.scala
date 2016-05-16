@@ -196,7 +196,7 @@ class CompilerTest {
       """struct A { int a; }
         |void setA(A a, int val) { a.a = val; }
         |int box() {
-        |   A a = new A;
+        |   A a = new A();
         |   setA(a, 5);
         |   return a.a;
         |}
@@ -330,10 +330,9 @@ class CompilerTest {
       """struct Rectangle {
         |   int w, h;
         |}
-        |
         |int box() {
         |   Rectangle r;
-        |   r = new Rectangle;
+        |   r = new Rectangle();
         |   r.w = 3;
         |   r.h = 4;
         |   return r.w * r.h;
@@ -348,10 +347,9 @@ class CompilerTest {
       """struct Safe {
         |   private int secret;
         |}
-        |
         |void box() {
         |   Safe s;
-        |   s = new Safe;
+        |   s = new Safe();
         |   s.secret = 1;
         |   return;
         |}
@@ -367,7 +365,7 @@ class CompilerTest {
         |}
         |int box() {
         |   A a;
-        |   a = new A;
+        |   a = new A();
         |   return a.a;
         |}
       """.stripMargin
@@ -383,7 +381,7 @@ class CompilerTest {
         |int box() {
         |   A a;
         |   if (true) {
-        |     a = new A;
+        |     a = new A();
         |   } else {}
         |   return a.a;
         |}
@@ -414,7 +412,7 @@ class CompilerTest {
         |int getA(A a) { return a.a; }
         |int box() {
         |   A a;
-        |   a = new A;
+        |   a = new A();
         |   a.a = 5;
         |   return getA(a);
         |}
@@ -427,7 +425,7 @@ class CompilerTest {
     val src =
       """struct A { int a; }
         |A constructA(int val) {
-        |   A a = new A;
+        |   A a = new A();
         |   a.a = val;
         |   return a;
         |}
@@ -447,13 +445,13 @@ class CompilerTest {
         |struct B { A a; }
         |A constructA() {
         |   A a;
-        |   a = new A;
+        |   a = new A();
         |   a.x = 10;
         |   return a;
         |}
         |B constructB() {
         |   B b;
-        |   b = new B;
+        |   b = new B();
         |   b.a = constructA();
         |   return b;
         |}
@@ -475,13 +473,13 @@ class CompilerTest {
         |struct B { A a; }
         |A constructA() {
         |   A a;
-        |   a = new A;
+        |   a = new A();
         |   a.x = 10;
         |   return a;
         |}
         |B constructB() {
         |   B b;
-        |   b = new B;
+        |   b = new B();
         |   b.a = constructA();
         |   return b;
         |}
@@ -500,8 +498,8 @@ class CompilerTest {
         |struct B { A a; }
         |B constructB() {
         |   B b;
-        |   b = new B;
-        |   b.a = new A;
+        |   b = new B();
+        |   b.a = new A();
         |   return b;
         |}
         |int box() {
@@ -521,7 +519,7 @@ class CompilerTest {
         |}
         |int box() {
         |   Rectangle r;
-        |   r = new Rectangle;
+        |   r = new Rectangle();
         |   r.w = 10;
         |   r.h = 15;
         |   r.s = r.w * r.h;
@@ -536,7 +534,7 @@ class CompilerTest {
     val src =
       """struct A { int a; }
         |int box() {
-        |   A a = new A;
+        |   A a = new A();
         |   int b = 5, c = 6;
         |   a.a = 4;
         |   return a.a * b * c;
@@ -555,7 +553,7 @@ class CompilerTest {
         |   }
         |}
         |int box() {
-        |   Rectangle r = new Rectangle;
+        |   Rectangle r = new Rectangle();
         |   r.w = 4;
         |   r.h = 5;
         |   return r.square();
@@ -574,7 +572,7 @@ class CompilerTest {
         |   }
         |}
         |Rectangle constructRectangle(int w, int h) {
-        |   Rectangle r = new Rectangle;
+        |   Rectangle r = new Rectangle();
         |   r.w = w;
         |   r.h = h;
         |   return r;
@@ -602,7 +600,7 @@ class CompilerTest {
         |   }
         |}
         |Rectangle constructRectangle(int w, int h) {
-        |   Rectangle r = new Rectangle;
+        |   Rectangle r = new Rectangle();
         |   r.w = w;
         |   r.h = h;
         |   return r;
@@ -616,5 +614,48 @@ class CompilerTest {
         |}
       """.stripMargin
     runTest(src, 1)
+  }
+
+  @Test
+  def constructorTest(): Unit = {
+    val src =
+      """struct Rectangle {
+        |   private int w, h;
+        |   constructor(int w, int h) {
+        |     this.w = w;
+        |     this.h = h;
+        |   }
+        |   int getS() { return this.w * this.h; }
+        |}
+        |int box() {
+        |   return new Rectangle(3, 4).getS();
+        |}
+      """.stripMargin
+    runTest(src, 12)
+  }
+
+  @Test
+  def defaultConstructor(): Unit = {
+    val src =
+      """struct A { int a; }
+        |int box() {
+        |   A a = new A();
+        |   return a.a;
+        |}
+      """.stripMargin
+    runTest(src, 0)
+  }
+
+  @Test
+  def noDefaultConstructor(): Unit = {
+    expectSemanticException(
+      """struct A {
+        |   int a;
+        |   constructor(int a) { this.a = a; }
+        |}
+        |void box() {
+        |   A a = new A();
+        |}
+      """.stripMargin)
   }
 }
