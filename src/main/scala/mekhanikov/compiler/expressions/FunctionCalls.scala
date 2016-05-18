@@ -33,11 +33,7 @@ class FunctionCalls(val buildContext: BuildContext) {
   def buildCall(function: Function, args: List[Value], ctx: ParserRuleContext): Value = {
     val llvmArgs = args.zipWithIndex.map { case (arg, i) =>
       val expectedType = function.argTypes(i)
-      if (arg.valType == expectedType) {
-        arg.value
-      } else {
-        LLVMBuildBitCast(builder, arg.value, expectedType.toLLVMType, "cast")
-      }
+      buildContext.cast(arg, expectedType, ctx).value
     }
     val resultPrefix =
       if (function.returnType != Primitives.VOID) "call" else ""

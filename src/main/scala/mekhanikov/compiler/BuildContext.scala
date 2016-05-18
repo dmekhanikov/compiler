@@ -111,4 +111,17 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
     LLVMPositionBuilderAtEnd(builder, entry)
     function
   }
+
+  def cast(value: Value, destType: Type, ctx: ParserRuleContext): Value = {
+    if (value.valType != destType) {
+      if (value.valType.isSubtypeOf(destType)) {
+        val llvmValue = LLVMBuildBitCast(builder, value.value, destType.toLLVMType, "cast")
+        new Value(destType, llvmValue)
+      } else {
+        throw new CompilationException(ctx, s"Incompatible types: ${destType.name} and ${value.valType.name}")
+      }
+    } else {
+      value
+    }
+  }
 }

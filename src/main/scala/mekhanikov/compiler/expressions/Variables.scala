@@ -17,10 +17,7 @@ class Variables(val buildContext: BuildContext) {
     buildContext.checkVariableExists(varName, ctx)
     val variable = buildContext.variables(varName)
     val exprValue = buildContext.visitor.visit(ctx.expression).get
-    if (variable.varType != exprValue.valType) {
-      throw new CompilationException(ctx, s"incompatible types: (${variable.varType}, ${exprValue.valType})")
-    }
-    variable.value = exprValue
-    exprValue
+    variable.value = buildContext.cast(exprValue, variable.varType, ctx)
+    variable.value
   }
 }

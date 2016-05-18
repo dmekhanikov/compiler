@@ -86,12 +86,9 @@ class FunctionDefinitions(val buildContext: BuildContext) {
 
   def buildReturn(ctx: FunctionBodyContext, returnType: Type): Unit = {
     if (Option(ctx.returnStmt).isDefined && Option(ctx.returnStmt.expression).isDefined) {
-      val returned = visitor.visit(ctx.returnStmt.expression).get
-      if (returned.valType == returnType) {
-        LLVMBuildRet(builder, returned.value)
-      } else {
-        throw new CompilationException(ctx, s"expecting expression of type ${returnType.name}, but was: ${returned.valType.name}")
-      }
+      val exprValue = visitor.visit(ctx.returnStmt.expression).get
+      val returned = buildContext.cast(exprValue, returnType, ctx.returnStmt)
+      LLVMBuildRet(builder, returned.value)
     } else if (returnType == Primitives.VOID) {
       LLVMBuildRetVoid(builder)
     } else {

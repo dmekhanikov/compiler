@@ -1,9 +1,9 @@
 package mekhanikov.compiler.definitions
 
-import mekhanikov.compiler.{BuildContext, CompilationException}
 import mekhanikov.compiler.ProgramParser.VarDeclContext
 import mekhanikov.compiler.entities.Variable
 import mekhanikov.compiler.types.Primitives
+import mekhanikov.compiler.{BuildContext, CompilationException}
 
 import scala.collection.JavaConversions._
 
@@ -25,10 +25,7 @@ class VariableDeclarations(val buildContext: BuildContext) {
       Option(varInitCtx.expression) match {
         case Some(exprContext) =>
           val value = buildContext.visitor.visit(exprContext).get
-          if (value.valType != varType) {
-            throw new CompilationException(varInitCtx, s"Incompatible types: ${varType.name} and ${value.valType}")
-          }
-          variable.value = value
+          variable.value = buildContext.cast(value, variable.varType, ctx)
         case None =>
       }
     }
