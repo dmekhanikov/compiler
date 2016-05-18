@@ -5,7 +5,7 @@ import mekhanikov.compiler.entities.Function
 import mekhanikov.compiler.entities.struct.Visibility.Visibility
 import mekhanikov.compiler.entities.struct.{Field, Method, Struct, Visibility}
 import mekhanikov.compiler.expressions.FunctionCalls
-import mekhanikov.compiler.types.Primitives
+import mekhanikov.compiler.types.{Primitives, Type}
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
@@ -150,16 +150,20 @@ class Structures(buildContext: BuildContext,
       case None =>
     }
     val argTypes = args.map(arg => arg.valType)
-    val optMethod = struct.methods.find(method =>
-      method.function.name == s"${struct.name}/$methodName" &&
-        method.function.argTypes == argTypes)
-    optMethod match {
-      case Some(method) =>
-        val result = functionCalls.buildCall(method.function, args, callCtx)
-        result
-      case None =>
-        val signature = buildContext.functionSignature(methodName, argTypes)
-        throw new CompilationException(callCtx, s"Struct ${struct.name} doesn't have a method with signature $signature")
+    val method = findMethod(struct, methodName, argTypes, callCtx)
+    functionCalls.buildCall(method.function, args, callCtx)
+  }
+
+  private def findMethod(struct: Struct, name: String, argTypes: Seq[Type], ctx: ParserRuleContext): Method = {
+    val candidates = struct.allMethods.filter(
+      method => method.name == name &&
+                method.function.isApplicable(argTypes))
+    if (candidates.isEmpty) {
+      throw new CompilationException(ctx, s"there is no method in struct ${struct.name} with such signature")
+    } else if (candidates.size > 1) {
+      throw new CompilationException(ctx, "ambigous call to overloaded method")
+    } else {
+      candidates.head
     }
   }
 

@@ -17,6 +17,26 @@ class Struct(name: String,
     }
   }
 
+  def allMethods: List[Method] = {
+    var result = if (parentStruct.isDefined) {
+      parentStruct.get.allMethods
+    } else {
+      List()
+    }
+    methods.foreach { method =>
+      result.zipWithIndex.find { case (oldMethod, i) =>
+          oldMethod.name == method.name &&
+            oldMethod.function.argTypes.tail == method.function.argTypes.tail
+      } match {
+        case Some((oldMethod, i)) =>
+          result = result.updated(i, method)
+        case None =>
+          result ++= List(method)
+      }
+    }
+    result
+  }
+
   def toLLVMStructType: LLVMTypeRef = {
     val fieldTypes = allFields.map(field => field.fieldType.toLLVMType)
     LLVMStructType(new PointerPointer(fieldTypes:_*), fieldTypes.size, 0)

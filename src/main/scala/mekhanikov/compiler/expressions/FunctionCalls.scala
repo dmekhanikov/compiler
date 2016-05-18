@@ -50,21 +50,13 @@ class FunctionCalls(val buildContext: BuildContext) {
   }
 
   private def findFunction(functions: Iterable[Function], name: String, argTypes: Seq[Type], ctx: ParserRuleContext): Function = {
-    val candidates = functions.filter(function => function.name == name && isApplicable(function, argTypes))
+    val candidates = functions.filter(function => function.name == name && function.isApplicable(argTypes))
     if (candidates.isEmpty) {
       throw new CompilationException(ctx, "there is no function with such signature")
     } else if (candidates.size > 1) {
       throw new CompilationException(ctx, "ambigous call to overloaded function")
     } else {
       candidates.head
-    }
-  }
-
-  def isApplicable(function: Function, argTypes: Seq[Type]): Boolean = {
-    if (function.argTypes.size != argTypes.size) {
-      false
-    } else {
-      function.argTypes.zipWithIndex.forall { case (expectedType, i) => argTypes(i).isSubtypeOf(expectedType) }
     }
   }
 }
