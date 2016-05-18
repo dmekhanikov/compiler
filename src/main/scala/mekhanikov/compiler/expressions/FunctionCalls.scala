@@ -1,7 +1,7 @@
 package mekhanikov.compiler.expressions
 
 import mekhanikov.compiler.ProgramParser.FunctionCallContext
-import mekhanikov.compiler.types.Primitives
+import mekhanikov.compiler.types.{Primitives, Type}
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import mekhanikov.compiler.entities.Function
 import org.antlr.v4.runtime.ParserRuleContext
@@ -26,21 +26,19 @@ class FunctionCalls(val buildContext: BuildContext) {
       case None => List()
     }
     val argTypes = args.map { arg => arg.valType }
-    val functionSignature = buildContext.functionSignature(functionName, argTypes)
-    buildContext.functions.get(functionSignature) match {
-      case None =>
-        throw new CompilationException(ctx, s"call to an undeclared function: $functionSignature")
-      case Some(function) =>
-        buildCall(function, args, ctx)
-    }
+    val function = findFunction(buildContext.functions.values, functionName, argTypes, ctx)
+    buildCall(function, args, ctx)
   }
 
   def buildCall(function: Function, args: List[Value], ctx: ParserRuleContext): Value = {
-    val providedArgTypes = args.map(arg => arg.valType)
-    if (providedArgTypes != function.argTypes) {
-      throw new CompilationException(ctx, "wrong function signature")
+    val llvmArgs = args.zipWithIndex.map { case (arg, i) =>
+      val expectedType = function.argTypes(i)
+      if (arg.valType == expectedType) {
+        arg.value
+      } else {
+        LLVMBuildBitCast(builder, arg.value, expectedType.toLLVMType, "cast")
+      }
     }
-    val llvmArgs = args.map(arg => arg.value)
     val resultPrefix =
       if (function.returnType != Primitives.VOID) "call" else ""
     val callRes = LLVMBuildCall(builder, function.llvmFunction, new PointerPointer(llvmArgs: _*), args.size, resultPrefix)
@@ -48,6 +46,25 @@ class FunctionCalls(val buildContext: BuildContext) {
       case Primitives.VOID => Value.VOID
       case _ =>
         new Value(function.returnType, callRes)
+    }
+  }
+
+  private def findFunction(functions: Iterable[Function], name: String, argTypes: Seq[Type], ctx: ParserRuleContext): Function = {
+    val candidates = functions.filter(function => function.name == name && isApplicable(function, argTypes))
+    if (candidates.isEmpty) {
+      throw new CompilationException(ctx, "there is no function with such signature")
+    } else if (candidates.size > 1) {
+      throw new CompilationException(ctx, "ambigous call to overloaded function")
+    } else {
+      candidates.head
+    }
+  }
+
+  def isApplicable(function: Function, argTypes: Seq[Type]): Boolean = {
+    if (function.argTypes.size != argTypes.size) {
+      false
+    } else {
+      function.argTypes.zipWithIndex.forall { case (expectedType, i) => argTypes(i).isSubtypeOf(expectedType) }
     }
   }
 }

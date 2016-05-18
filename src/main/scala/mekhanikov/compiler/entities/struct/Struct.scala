@@ -26,13 +26,14 @@ class Struct(name: String,
     LLVMPointerType(toLLVMStructType, 0)
   }
 
-  def isSubtypeOf(other: Struct): Boolean = {
+  override def isSubtypeOf(other: Type): Boolean = {
     if (other == this) {
       true
-    } else  if (parentStruct.isDefined) {
-      parentStruct.get.isSubtypeOf(other)
-    } else {
-      false
+    } else  other match {
+      case struct: Struct if parentStruct.isDefined =>
+        parentStruct.get.isSubtypeOf(other)
+      case _ =>
+        false
     }
   }
 }
