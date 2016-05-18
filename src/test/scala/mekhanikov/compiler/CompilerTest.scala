@@ -256,6 +256,22 @@ class CompilerTest {
   }
 
   @Test
+  def methodRedeclaration(): Unit = {
+    expectSemanticException(
+      """struct A {
+        |   int box(int x, int y) { return x; }
+        |   int box(int x, int y) { return y; }
+        |}
+      """.stripMargin)
+    expectSemanticException(
+      """struct A {
+        |   int box(int x, int y) { return x; }
+        |   bool box(int x, int y) { return true; }
+        |}
+      """.stripMargin)
+  }
+
+  @Test
   def functionOverload(): Unit = {
     val src =
       """int add(int x, int y) { return x + y; }
