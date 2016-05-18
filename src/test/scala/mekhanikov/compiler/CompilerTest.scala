@@ -530,6 +530,16 @@ class CompilerTest {
   }
 
   @Test
+  def fieldDuplication(): Unit = {
+    expectSemanticException(
+      """struct A {
+        |   int a;
+        |   int a;
+        |}
+      """.stripMargin)
+  }
+
+  @Test
   def variablesInit(): Unit = {
     val src =
       """struct A { int a; }

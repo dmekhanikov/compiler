@@ -33,7 +33,13 @@ class Structures(buildContext: BuildContext,
         Visibility.PUBLIC
       }
       if (Option(memberDeclCtx.fieldDecl).isDefined) {
-        struct.fields ++= getFields(memberDeclCtx.fieldDecl, visibility)
+        getFields(memberDeclCtx.fieldDecl, visibility).foreach { newField =>
+          if (struct.fields.exists(field => field.name == newField.name)) {
+            throw new CompilationException(memberDeclCtx.fieldDecl, s"duplicated declaration of field ${newField.name}")
+          } else {
+            struct.fields ::= newField
+          }
+        }
       } else if (Option(memberDeclCtx.functionDef).isDefined) {
         val function = functionDefinitions.function(memberDeclCtx.functionDef)
         val method = new Method(function, visibility)
