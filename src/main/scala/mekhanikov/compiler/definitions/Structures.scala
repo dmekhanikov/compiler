@@ -9,7 +9,6 @@ import mekhanikov.compiler.types.Primitives
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
-import org.bytedeco.javacpp.PointerPointer
 
 import scala.collection.JavaConversions._
 
@@ -23,7 +22,8 @@ class Structures(buildContext: BuildContext,
 
   def struct(ctx: StructDefContext): Unit = {
     val structName = ctx.ID.getText
-    val struct = new Struct(structName, List(), List())
+    val parentStruct = findParentStruct(ctx)
+    val struct = new Struct(structName, List(), List(), parentStruct)
     buildContext.structures(structName) = struct
     buildContext.currentStructure = Some(struct)
     ctx.memberDecl.foreach { memberDeclCtx =>
@@ -34,7 +34,7 @@ class Structures(buildContext: BuildContext,
       }
       if (Option(memberDeclCtx.fieldDecl).isDefined) {
         getFields(memberDeclCtx.fieldDecl, visibility).foreach { newField =>
-          if (struct.fields.exists(field => field.name == newField.name)) {
+          if (struct.allFields.exists(field => field.name == newField.name)) {
             throw new CompilationException(memberDeclCtx.fieldDecl, s"duplicated declaration of field ${newField.name}")
           } else {
             struct.fields ::= newField
@@ -65,9 +65,17 @@ class Structures(buildContext: BuildContext,
     buildContext.currentStructure = None
   }
 
-  def createInitMethod(struct: Struct, ctx: StructDefContext): Method = {
-    val function = functionDefinitions.functionHead(INIT_METHOD_NAME, Primitives.VOID, None, ctx)
+  private def findParentStruct(ctx: StructDefContext): Option[Struct] = {
+    if (Option(ctx.parentStructDecl).isDefined) {
+      val parentStructName = ctx.parentStructDecl.ID.getText
+      buildContext.structures.get(parentStructName)
+    } else {
+      None
+    }
+  }
 
+  private def createInitMethod(struct: Struct, ctx: StructDefContext): Method = {
+    val function = functionDefinitions.functionHead(INIT_METHOD_NAME, Primitives.VOID, None, ctx)
     val thisRef = LLVMGetParam(function.llvmFunction, 0)
     struct.fields.zipWithIndex.foreach { case (field, i) =>
       val elementPtr = LLVMBuildStructGEP(builder, thisRef, i, "fieldPtr")
@@ -159,17 +167,17 @@ class Structures(buildContext: BuildContext,
     if (Primitives.isPrimitive(value.valType)) {
       throw new CompilationException(ctx, "Cannot access a field of a primitive value")
     }
-    val struct = value.valType.asInstanceOf[Struct]
-    struct.fields
+    val valueStruct = value.valType.asInstanceOf[Struct]
+    valueStruct.allFields
       .zipWithIndex
       .find { case (field, i) => field.name == fieldName } match {
       case None =>
-        throw new CompilationException(s"Structure ${struct.name} doesn't have a field $fieldName")
+        throw new CompilationException(s"Structure ${valueStruct.name} doesn't have a field $fieldName")
       case Some((field, i)) =>
         if (field.visibility == Visibility.PRIVATE
           && (buildContext.currentStructure.isEmpty ||
-          buildContext.currentStructure.get != struct)) {
-          throw new CompilationException(ctx, s"$fieldName is private in ${struct.name}")
+          !buildContext.currentStructure.get.isSubtypeOf(valueStruct))) {
+          throw new CompilationException(ctx, s"$fieldName is private in ${valueStruct.name}")
         }
         (field, i)
     }

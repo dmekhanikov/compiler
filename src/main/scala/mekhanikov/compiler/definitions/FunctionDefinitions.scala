@@ -2,7 +2,6 @@ package mekhanikov.compiler.definitions
 
 import mekhanikov.compiler.ProgramParser.{FunctionBodyContext, FunctionDefContext, ParameterListContext}
 import mekhanikov.compiler._
-import mekhanikov.compiler.entities.struct.Struct
 import mekhanikov.compiler.entities.{Function, Variable}
 import mekhanikov.compiler.types.{Primitives, Type}
 import org.antlr.v4.runtime.ParserRuleContext

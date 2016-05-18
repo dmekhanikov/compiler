@@ -33,9 +33,13 @@ statement
     ;
 
 structDef
-    : 'struct' ID '{'
+    : 'struct' ID parentStructDecl? '{'
         memberDecl*
       '}'
+    ;
+
+parentStructDecl
+    : ':' ID
     ;
 
 memberDecl
