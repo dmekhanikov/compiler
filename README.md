@@ -8,7 +8,11 @@
     - `&&`, `||`
 - `if` and `while` statements
 - `printInt`, `printBool`, `readInt` and user-defined functions
+- functions overloading
 - structures with fields and methods
+    - private and public members
+    - constructors
+    - inheritance
 - LLVM code generation
 
 ## Build
@@ -34,7 +38,12 @@ int power(int x, int y) {
 Structure of a rectangle:
 ```c
 struct Rectangle {
-    int w, h;
+    private int w, h;
+
+    constructor(int w, int h) {
+        this.w = w;
+        this.h = h;
+    }
 
     int square() {
         return this.w * this.h;
