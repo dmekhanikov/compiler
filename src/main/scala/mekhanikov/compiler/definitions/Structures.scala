@@ -88,7 +88,7 @@ class Structures(buildContext: BuildContext,
     }
     LLVMBuildRetVoid(builder)
 
-    val method = new Method(function, Visibility.PRIVATE)
+    val method = new Method(function, Visibility.PUBLIC)
     struct.methods ::= method
     method
   }
@@ -157,7 +157,9 @@ class Structures(buildContext: BuildContext,
   private def findMethod(struct: Struct, name: String, argTypes: Seq[Type], ctx: ParserRuleContext): Method = {
     val candidates = struct.allMethods.filter(
       method => method.name == name &&
-                method.function.isApplicable(argTypes))
+                method.function.isApplicable(argTypes) &&
+                isVisible(method.visibility, struct)
+    )
     if (candidates.isEmpty) {
       throw new CompilationException(ctx, s"there is no method in struct ${struct.name} with such signature")
     } else if (candidates.size > 1) {
@@ -178,13 +180,17 @@ class Structures(buildContext: BuildContext,
       case None =>
         throw new CompilationException(s"Structure ${valueStruct.name} doesn't have a field $fieldName")
       case Some((field, i)) =>
-        if (field.visibility == Visibility.PRIVATE
-          && (buildContext.currentStructure.isEmpty ||
-          !buildContext.currentStructure.get.isSubtypeOf(valueStruct))) {
+        if (!isVisible(field.visibility, valueStruct)) {
           throw new CompilationException(ctx, s"$fieldName is private in ${valueStruct.name}")
         }
         (field, i)
     }
+  }
+
+  private def isVisible(visibility: Visibility, struct: Struct): Boolean = {
+    visibility == Visibility.PUBLIC ||
+      buildContext.currentStructure.isDefined &&
+      buildContext.currentStructure.get.isSubtypeOf(struct)
   }
 
   private def getFields(fieldsDeclCtx: FieldDeclContext, visibility: Visibility): List[Field] = {

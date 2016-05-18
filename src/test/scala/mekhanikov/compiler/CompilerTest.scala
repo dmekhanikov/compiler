@@ -589,6 +589,21 @@ class CompilerTest {
   }
 
   @Test
+  def privateStructMethods(): Unit = {
+    expectSemanticException(
+      """struct A {
+        |   private int a;
+        |   private int getA() { return this.a; }
+        |   constructor(int a) { this.a = a; }
+        |}
+        |int box() {
+        |   A a = new A(5);
+        |   return a.getA();
+        |}
+      """.stripMargin)
+  }
+
+  @Test
   def structMethodsWithParameters(): Unit = {
     val src =
       """struct Rectangle {
@@ -788,6 +803,25 @@ class CompilerTest {
         |int box() {
         |   B b = new B(5);
         |   return b.getA();
+        |}
+      """.stripMargin
+    runTest(src, 5)
+  }
+
+  @Test
+  def inheritingPrivateMethods(): Unit = {
+    val src =
+      """struct A {
+        |   private int a;
+        |   private int getA() { return this.a; }
+        |}
+        |struct B : A {
+        |   constructor(int a) { this.a = a; }
+        |   int get() { return this.getA(); }
+        |}
+        |int box() {
+        |   B b = new B(5);
+        |   return b.get();
         |}
       """.stripMargin
     runTest(src, 5)
