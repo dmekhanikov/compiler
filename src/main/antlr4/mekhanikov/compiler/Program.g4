@@ -20,6 +20,7 @@ expression
     | 'new' ID '(' expressionList? ')'                  #newExpr
     | <assoc=right> expression '.' ID '=' expression    #fieldWrite
     | <assoc=right> ID '=' expression                   #varAssignment
+    | 'if' '(' expression ')' block 'else' block        #condExpr
     ;
 
 expressionList
@@ -28,8 +29,7 @@ expressionList
 
 statement
     : expression ';'                                #exprStmt
-    | 'if' '(' expression ')' block 'else' block    #ifStmt
-    | 'while' '(' expression ')' block              #whileStmt
+    | 'while' '(' expression ')' block #whileStmt
     ;
 
 structDef
@@ -62,12 +62,8 @@ functionBody:
     '{'
       varDecl*
       statement*
-      returnStmt?
+      expression?
     '}'
-    ;
-
-returnStmt
-    : 'return' expression? ';'
     ;
 
 varDecl
@@ -78,8 +74,11 @@ varInit
     : ID ('=' expression)?
     ;
 
-block
-    : '{' statement* '}'
+block:
+    '{'
+        statement*
+        expression?
+    '}'
     ;
 
 parameter

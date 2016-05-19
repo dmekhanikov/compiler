@@ -1,19 +1,20 @@
-package mekhanikov.compiler.statements
+package mekhanikov.compiler.expressions
 
-import mekhanikov.compiler.ProgramParser.IfStmtContext
+import mekhanikov.compiler.ProgramParser.CondExprContext
 import mekhanikov.compiler._
-import mekhanikov.compiler.types.Primitives
+import mekhanikov.compiler.types.{Primitives, Type}
 import org.bytedeco.javacpp.LLVM._
+import org.bytedeco.javacpp.PointerPointer
 
 import scala.collection.mutable
 
-class IfStatements(val buildContext: BuildContext) {
+class CondExpr(val buildContext: BuildContext) {
 
   private val builder = buildContext.builder
   private val visitor = buildContext.visitor
   private val assignmentSearchVisitor = new AssignmentSearchVisitor(buildContext)
 
-  def ifStatement(ctx: IfStmtContext): Unit = {
+  def condExpr(ctx: CondExprContext): Value = {
     val currentFunction = buildContext.currentFunction.get
     val thenBlock = LLVMAppendBasicBlock(currentFunction, "ifTrue")
     val elseBlock = LLVMAppendBasicBlock(currentFunction, "ifFalse")
@@ -42,7 +43,7 @@ class IfStatements(val buildContext: BuildContext) {
     // then branch
     LLVMMoveBasicBlockAfter(thenBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, thenBlock)
-    visitor.visit(ctx.block(0))
+    val thenValue = visitor.visit(ctx.block(0))
     LLVMBuildBr(builder, endIf)
     val lastThenBlock = LLVMGetLastBasicBlock(currentFunction)
     addIncomings(thenAssignedVarNames, lastThenBlock, phiVals)
@@ -52,7 +53,7 @@ class IfStatements(val buildContext: BuildContext) {
     // else branch
     LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, elseBlock)
-    visitor.visit(ctx.block(1))
+    val elseValue = visitor.visit(ctx.block(1))
     LLVMBuildBr(builder, endIf)
     val lastElseBlock = LLVMGetLastBasicBlock(currentFunction)
     addIncomings(elseAssignedVarNames, lastElseBlock, phiVals)
@@ -64,8 +65,24 @@ class IfStatements(val buildContext: BuildContext) {
       val variable = buildContext.variables(name)
       variable.value = new Value(variable.varType, value)
     }
-    LLVMPositionBuilderAtEnd(builder, endIf)
     LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(currentFunction))     // ordering the blocks
+    LLVMPositionBuilderAtEnd(builder, endIf)
+
+    if (thenValue.isDefined && elseValue.isDefined) {
+      val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
+      if (resultType == Primitives.VOID) {
+        Primitives.VOID.value
+      } else {
+        val llvmResult = LLVMBuildPhi(builder, resultType.toLLVMType, "ifResult")
+        val thenCast = buildContext.cast(thenValue.get, resultType, ctx)
+        val elseCast = buildContext.cast(elseValue.get, resultType, ctx)
+        LLVMAddIncoming(llvmResult, new PointerPointer(thenCast.value, elseCast.value),
+                                    new PointerPointer(thenBlock, elseBlock), 2)
+        new Value(resultType, llvmResult)
+      }
+    } else {
+      Primitives.VOID.value
+    }
   }
 
   private def addIncomings(varNames: Set[String], block: LLVMBasicBlockRef, phiVals: mutable.Map[String, LLVMValueRef]): Unit = {

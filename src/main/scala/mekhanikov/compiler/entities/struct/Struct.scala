@@ -11,7 +11,7 @@ class Struct(name: String,
 
   def allFields: List[Field] = {
     if (parentStruct.isDefined) {
-      parentStruct.get.fields ++ fields
+      parentStruct.get.allFields ++ fields
     } else {
       fields
     }

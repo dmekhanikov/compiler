@@ -44,7 +44,7 @@ class WhileStatements(val buildContext: BuildContext) {
     // loop body
     LLVMMoveBasicBlockAfter(whileBody, LLVMGetLastBasicBlock(currentFunction))
     LLVMPositionBuilderAtEnd(builder, whileBody)
-    visitor.visit(ctx.block())
+    visitor.visit(ctx.block)
     LLVMBuildBr(builder, whileHead)
 
     // assign variables PHIs that where introduced in head

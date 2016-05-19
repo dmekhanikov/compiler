@@ -49,7 +49,7 @@ class CompilerTest {
         |    a = 5;
         |    b = 4;
         |    c = 3;
-        |    return a * (b + c) - a * 20 / b + c;
+        |    a * (b + c) - a * 20 / b + c
         |}
       """.stripMargin
     runTest(src, 13)
@@ -59,13 +59,13 @@ class CompilerTest {
   def boolean(): Unit = {
     val src1 =
       """bool box() {
-        |    return (4 < 5) && false || (15 + 3 == 18);
+        |    (4 < 5) && false || (15 + 3 == 18)
         |}
       """.stripMargin
     runTest(src1, 1)
     val src2 =
       """bool box() {
-        |    return false && (false || true);
+        |    false && (false || true)
         |}
       """.stripMargin
     runTest(src2, 0)
@@ -81,11 +81,64 @@ class CompilerTest {
         |        b = 1;
         |    } else {
         |        b = 2;
-        |    }
-        |    return b;
+        |    };
+        |    b
         |}
       """.stripMargin
     runTest(src, 2)
+  }
+
+  @Test
+  def conditionalReturn(): Unit = {
+    val src =
+      """int fact(int x) {
+        |   if (x == 0) {
+        |     1
+        |   } else {
+        |     x * fact(x - 1)
+        |   }
+        |}
+        |int box() {
+        |   fact(6)
+        |}
+      """.stripMargin
+    runTest(src, 720)
+  }
+
+  @Test
+  def conditionalAssignment(): Unit = {
+    val src =
+      """int box() {
+        |   int a = if (true) { 1 } else { 2 };
+        |   a
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
+
+  @Test
+  def conditionalTypeInference(): Unit = {
+    val src =
+      """struct A { int a; }
+        |struct B : A {}
+        |struct C : B {}
+        |struct C1 : C {}
+        |struct D : B {}
+        |int box() {
+        |   C1 c = new C1();
+        |   D d = new D();
+        |   A x;
+        |   c.a = 1;
+        |   d.a = 2;
+        |   x = if (true) {
+        |     c
+        |   } else {
+        |     d
+        |   };
+        |   x.a
+        |}
+      """.stripMargin
+    runTest(src, 1)
   }
 
   @Test
@@ -100,7 +153,7 @@ class CompilerTest {
         |        res = res * x;
         |        y = y - 1;
         |    }
-        |    return res;
+        |    res
         |}
       """.stripMargin
     runTest(src, 256)
@@ -124,7 +177,7 @@ class CompilerTest {
         |            c = c + 1;
         |        }
         |    }
-        |    return a + b + c;
+        |    a + b + c
         |}
       """.stripMargin
     runTest(src, 18)
@@ -133,9 +186,9 @@ class CompilerTest {
   @Test
   def functionCall(): Unit = {
     val src =
-      """int mul(int x, int y) { return x * y; }
+      """int mul(int x, int y) { x * y }
         |int box() {
-        |    return mul(5, 12);
+        |    mul(5, 12)
         |}
       """.stripMargin
     runTest(src, 60)
@@ -144,10 +197,10 @@ class CompilerTest {
   @Test
   def voidFunction(): Unit = {
     val src =
-      """void foo() { return; }
+      """void foo() { }
         |int box() {
         |   foo();
-        |   return 42;
+        |   42
         |}
       """.stripMargin
     runTest(src, 42)
@@ -155,13 +208,12 @@ class CompilerTest {
 
   @Test
   def missingSemicolon(): Unit = {
-    expectSyntaxException("void box() { return }")
     expectSyntaxException(
       """int box() {
         |    int a, b;
         |    a = 1
         |    b = 2;
-        |    return a + b;
+        |    a + b
         |}
       """.stripMargin)
     expectSyntaxException(
@@ -169,18 +221,18 @@ class CompilerTest {
         |    int a, b
         |    a = 1;
         |    b = 2;
-        |    return a + b;
+        |    a + b
         |}
       """.stripMargin)
   }
 
   @Test
   def missingBracket(): Unit = {
-    expectSyntaxException("void box() { return;")
+    expectSyntaxException("void box() { ")
   }
 
   @Test
-  def missingReturn(): Unit = {
+  def missingReturnValue(): Unit = {
     expectSemanticException(
       """int box() {
         |    int a;
@@ -198,7 +250,7 @@ class CompilerTest {
         |int box() {
         |   A a = new A();
         |   setA(a, 5);
-        |   return a.a;
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 5)
@@ -211,7 +263,7 @@ class CompilerTest {
         |    int a;
         |    a = 1;
         |    b = 2;
-        |    return a + b;
+        |    a + b
         |}
       """.stripMargin)
   }
@@ -220,25 +272,25 @@ class CompilerTest {
   def undefinedFunction(): Unit = {
     expectSemanticException(
       """int box() {
-        |    return mul(2, 2);
+        |    mul(2, 2)
         |}
       """.stripMargin)
     expectSemanticException(
       """int box() {
-        |    return mul(2, 2);
+        |    mul(2, 2)
         |}
-        |int mul(int x, int y) { return x * y; }
+        |int mul(int x, int y) { x * y }
       """.stripMargin)
     expectSemanticException(
-      """int mul(int x) { return x * x; }
+      """int mul(int x) { x * x }
         |int box() {
-        |    return mul(2, 2);
+        |    mul(2, 2)
         |}
       """.stripMargin)
     expectSemanticException(
-      """int mul(int x, bool b) { return x; }
+      """int mul(int x, bool b) { x }
         |int box() {
-        |    return mul(2, 2);
+        |    mul(2, 2)
         |}
       """.stripMargin)
   }
@@ -246,12 +298,12 @@ class CompilerTest {
   @Test
   def functionRedeclaration(): Unit = {
     expectSemanticException(
-      """int box(int x, int y) { return x; }
-        |int box(int x, int y) { return y; }
+      """int box(int x, int y) { x }
+        |int box(int x, int y) { y }
       """.stripMargin)
     expectSemanticException(
-      """int box(int x, int y) { return x; }
-        |bool box(int x, int y) { return true; }
+      """int box(int x, int y) { x }
+        |bool box(int x, int y) { true }
       """.stripMargin)
   }
 
@@ -259,14 +311,14 @@ class CompilerTest {
   def methodRedeclaration(): Unit = {
     expectSemanticException(
       """struct A {
-        |   int box(int x, int y) { return x; }
-        |   int box(int x, int y) { return y; }
+        |   int box(int x, int y) { x }
+        |   int box(int x, int y) { y }
         |}
       """.stripMargin)
     expectSemanticException(
       """struct A {
-        |   int box(int x, int y) { return x; }
-        |   bool box(int x, int y) { return true; }
+        |   int box(int x, int y) { x }
+        |   bool box(int x, int y) { true }
         |}
       """.stripMargin)
   }
@@ -274,20 +326,20 @@ class CompilerTest {
   @Test
   def functionOverload(): Unit = {
     val src =
-      """int add(int x, int y) { return x + y; }
+      """int add(int x, int y) { x + y }
         |int add(int x, bool y) {
         |   int result = x;
         |   if (y) {
         |       result = x + 1;
-        |   } else {}
-        |   return result;
+        |   } else {};
+        |   result
         |}
-        |bool add(bool x, bool y) { return x != y; }
+        |bool add(bool x, bool y) { x != y }
         |bool box() {
         |   int a = add(2, 5);
         |   int b = add(3, true);
         |   bool c = add(true, false);
-        |   return a == 7 && b == 4 && c;
+        |   a == 7 && b == 4 && c
         |}
       """.stripMargin
     runTest(src, 1)
@@ -295,35 +347,32 @@ class CompilerTest {
 
   @Test
   def typeMismatch(): Unit = {
-    expectSemanticException("int box() { return true; }")
-    expectSemanticException("bool box() { return 1; }")
-    expectSemanticException("bool box() { return; }")
-    expectSemanticException("void box() { return 1; }")
+    expectSemanticException("int box() { true }")
+    expectSemanticException("bool box() { 1 }")
+    expectSemanticException("bool box() {  }")
     expectSemanticException(
       """bool box() {
         |    int a;
         |    a = 5;
-        |    return a;
+        |    a
         |}
       """.stripMargin)
     expectSemanticException(
       """void box() {
         |    int a;
         |    a = true;
-        |    return;
         |}
       """.stripMargin)
     expectSemanticException(
       """void box() {
         |    bool a;
         |    a = 42;
-        |    return;
         |}
       """.stripMargin)
     expectSemanticException(
-      """int dup(int x) { return x * 2; }
+      """int dup(int x) { x * 2 }
         |bool box() {
-        |   return dup(2);
+        |   dup(2)
         |}
       """.stripMargin)
   }
@@ -334,7 +383,7 @@ class CompilerTest {
         """int box() {
           |    int a, b;
           |    a = b + 2;
-          |    return a;
+          |    a
           |}
       """.stripMargin
     runTest(src, 2)
@@ -351,7 +400,7 @@ class CompilerTest {
         |   r = new Rectangle();
         |   r.w = 3;
         |   r.h = 4;
-        |   return r.w * r.h;
+        |   r.w * r.h
         |}
       """.stripMargin
     runTest(src, 12)
@@ -367,7 +416,6 @@ class CompilerTest {
         |   Safe s;
         |   s = new Safe();
         |   s.secret = 1;
-        |   return;
         |}
       """.stripMargin
     expectSemanticException(src)
@@ -382,7 +430,7 @@ class CompilerTest {
         |int box() {
         |   A a;
         |   a = new A();
-        |   return a.a;
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 0)
@@ -398,8 +446,8 @@ class CompilerTest {
         |   A a;
         |   if (true) {
         |     a = new A();
-        |   } else {}
-        |   return a.a;
+        |   } else {};
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 0)
@@ -409,13 +457,13 @@ class CompilerTest {
   def conditionalPrimitiveInit(): Unit = {
     val src =
       """int box() {
-        |   int a, b;
+        |   int a, b = 0;
         |   if (true) {
         |       a = 1;
         |   } else {
         |       b = 2;
-        |   }
-        |   return a + b;
+        |   };
+        |   a + b
         |}
       """.stripMargin
     runTest(src, 1)
@@ -425,12 +473,12 @@ class CompilerTest {
   def passStructToFunction(): Unit = {
     val src =
       """struct A { int a; }
-        |int getA(A a) { return a.a; }
+        |int getA(A a) { a.a }
         |int box() {
         |   A a;
         |   a = new A();
         |   a.a = 5;
-        |   return getA(a);
+        |   getA(a)
         |}
       """.stripMargin
     runTest(src, 5)
@@ -443,12 +491,12 @@ class CompilerTest {
         |A constructA(int val) {
         |   A a = new A();
         |   a.a = val;
-        |   return a;
+        |   a
         |}
         |bool box() {
         |   A a1 = constructA(5);
         |   A a2 = constructA(6);
-        |   return a1.a == 5 && a2.a == 6;
+        |   a1.a == 5 && a2.a == 6
         |}
       """.stripMargin
     runTest(src, 1)
@@ -463,20 +511,20 @@ class CompilerTest {
         |   A a;
         |   a = new A();
         |   a.x = 10;
-        |   return a;
+        |   a
         |}
         |B constructB() {
         |   B b;
         |   b = new B();
         |   b.a = constructA();
-        |   return b;
+        |   b
         |}
         |int box() {
         |   B b;
         |   A a;
         |   b = constructB();
         |   a = b.a;
-        |   return a.x;
+        |   a.x
         |}
       """.stripMargin
     runTest(src, 10)
@@ -491,18 +539,18 @@ class CompilerTest {
         |   A a;
         |   a = new A();
         |   a.x = 10;
-        |   return a;
+        |   a
         |}
         |B constructB() {
         |   B b;
         |   b = new B();
         |   b.a = constructA();
-        |   return b;
+        |   b
         |}
         |int box() {
         |   B b;
         |   b = constructB();
-        |   return b.a.x;
+        |   b.a.x
         |}""".stripMargin
     runTest(src, 10)
   }
@@ -516,13 +564,13 @@ class CompilerTest {
         |   B b;
         |   b = new B();
         |   b.a = new A();
-        |   return b;
+        |   b
         |}
         |int box() {
         |   B b;
         |   b = constructB();
         |   b.a.x = 10;
-        |   return b.a.x;
+        |   b.a.x
         |}""".stripMargin
     runTest(src, 10)
   }
@@ -539,7 +587,7 @@ class CompilerTest {
         |   r.w = 10;
         |   r.h = 15;
         |   r.s = r.w * r.h;
-        |   return r.s;
+        |   r.s
         |}
       """.stripMargin
     runTest(src, 150)
@@ -563,7 +611,7 @@ class CompilerTest {
         |   A a = new A();
         |   int b = 5, c = 6;
         |   a.a = 4;
-        |   return a.a * b * c;
+        |   a.a * b * c
         |}
       """.stripMargin
     runTest(src, 120)
@@ -575,14 +623,14 @@ class CompilerTest {
       """struct Rectangle {
         |   int w, h;
         |   int square() {
-        |     return this.w * this.h;
+        |     this.w * this.h
         |   }
         |}
         |int box() {
         |   Rectangle r = new Rectangle();
         |   r.w = 4;
         |   r.h = 5;
-        |   return r.square();
+        |   r.square()
         |}
       """.stripMargin
     runTest(src, 20)
@@ -593,12 +641,12 @@ class CompilerTest {
     expectSemanticException(
       """struct A {
         |   private int a;
-        |   private int getA() { return this.a; }
+        |   private int getA() { this.a }
         |   constructor(int a) { this.a = a; }
         |}
         |int box() {
         |   A a = new A(5);
-        |   return a.getA();
+        |   a.getA()
         |}
       """.stripMargin)
   }
@@ -609,20 +657,20 @@ class CompilerTest {
       """struct Rectangle {
         |   int w, h;
         |   bool equals(Rectangle other) {
-        |       return this.w == other.w && this.h == other.h;
+        |       this.w == other.w && this.h == other.h
         |   }
         |}
         |Rectangle constructRectangle(int w, int h) {
         |   Rectangle r = new Rectangle();
         |   r.w = w;
         |   r.h = h;
-        |   return r;
+        |   r
         |}
         |bool box() {
         |   Rectangle r1 = constructRectangle(4, 5);
         |   Rectangle r2 = constructRectangle(4, 5);
         |   Rectangle r3 = constructRectangle(5, 6);
-        |   return r1.equals(r2) && (r1.equals(r3) == false);
+        |   r1.equals(r2) && (r1.equals(r3) == false)
         |}
       """.stripMargin
     runTest(src, 1)
@@ -634,24 +682,24 @@ class CompilerTest {
       """struct Rectangle {
         |   int w, h;
         |   bool equals(Rectangle other) {
-        |     return this.w == other.w && this.h == other.h;
+        |     this.w == other.w && this.h == other.h
         |   }
         |   bool equals(int w, int h) {
-        |     return this.w == w && this.h == h;
+        |     this.w == w && this.h == h
         |   }
         |}
         |Rectangle constructRectangle(int w, int h) {
         |   Rectangle r = new Rectangle();
         |   r.w = w;
         |   r.h = h;
-        |   return r;
+        |   r
         |}
         |bool box() {
         |   Rectangle r1 = constructRectangle(1, 2);
         |   Rectangle r2 = constructRectangle(1, 2);
         |   Rectangle r3 = constructRectangle(3, 4);
-        |   return r1.equals(r2) && r1.equals(1, 2) &&
-        |         (r1.equals(r3) == false) && (r1.equals(3, 4) == false);
+        |   r1.equals(r2) && r1.equals(1, 2) &&
+        |     (r1.equals(r3) == false) && (r1.equals(3, 4) == false)
         |}
       """.stripMargin
     runTest(src, 1)
@@ -666,10 +714,10 @@ class CompilerTest {
         |     this.w = w;
         |     this.h = h;
         |   }
-        |   int getS() { return this.w * this.h; }
+        |   int getS() { this.w * this.h }
         |}
         |int box() {
-        |   return new Rectangle(3, 4).getS();
+        |   new Rectangle(3, 4).getS()
         |}
       """.stripMargin
     runTest(src, 12)
@@ -681,7 +729,7 @@ class CompilerTest {
       """struct A { int a; }
         |int box() {
         |   A a = new A();
-        |   return a.a;
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 0)
@@ -707,7 +755,7 @@ class CompilerTest {
         |struct B : A { int b; }
         |bool box() {
         |   B b = new B();
-        |   return b.a == 0 && b.b == 0;
+        |   b.a == 0 && b.b == 0
         |}
       """.stripMargin
     runTest(src, 1)
@@ -724,10 +772,10 @@ class CompilerTest {
         |     this.b = b;
         |   }
         |}
-        |A makeA() { return new B(23, 42); }
+        |A makeA() { new B(23, 42) }
         |int box() {
         |   A a = makeA();
-        |   return a.a;
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 23)
@@ -745,7 +793,7 @@ class CompilerTest {
         |int box() {
         |   A a;
         |   a = new B(4);
-        |   return a.a;
+        |   a.a
         |}
         """.stripMargin
     runTest(src, 4)
@@ -762,7 +810,7 @@ class CompilerTest {
         |}
         |int box() {
         |   A a = new B(4);
-        |   return a.a;
+        |   a.a
         |}
       """.stripMargin
     runTest(src, 4)
@@ -780,11 +828,11 @@ class CompilerTest {
         |   }
         |}
         |int getA(A a) {
-        |   return a.a;
+        |   a.a
         |}
         |int box() {
         |   B b = new B(23, 42);
-        |   return getA(b);
+        |   getA(b)
         |}
       """.stripMargin
     runTest(src, 23)
@@ -795,14 +843,14 @@ class CompilerTest {
     val src =
       """struct A {
         |   private int a;
-        |   int getA() { return this.a; }
+        |   int getA() { this.a }
         |}
         |struct B : A {
         |   constructor(int a) { this.a = a; }
         |}
         |int box() {
         |   B b = new B(5);
-        |   return b.getA();
+        |   b.getA()
         |}
       """.stripMargin
     runTest(src, 5)
@@ -813,15 +861,15 @@ class CompilerTest {
     val src =
       """struct A {
         |   private int a;
-        |   private int getA() { return this.a; }
+        |   private int getA() { this.a }
         |}
         |struct B : A {
         |   constructor(int a) { this.a = a; }
-        |   int get() { return this.getA(); }
+        |   int get() { this.getA() }
         |}
         |int box() {
         |   B b = new B(5);
-        |   return b.get();
+        |   b.get()
         |}
       """.stripMargin
     runTest(src, 5)
@@ -840,7 +888,7 @@ class CompilerTest {
         |bool box() {
         |   B b = new B(5);
         |   b.b = 2;
-        |   return b.a == 5 && b.b == 2;
+        |   b.a == 5 && b.b == 2
         |}
       """.stripMargin
     runTest(src, 1)

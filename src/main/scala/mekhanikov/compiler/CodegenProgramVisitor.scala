@@ -2,8 +2,8 @@ package mekhanikov.compiler
 
 import mekhanikov.compiler.ProgramParser._
 import mekhanikov.compiler.definitions.{FunctionDefinitions, Structures, VariableDeclarations}
-import mekhanikov.compiler.expressions.{Ariphmetics, Constants, FunctionCalls, Variables}
-import mekhanikov.compiler.statements.{IfStatements, WhileStatements}
+import mekhanikov.compiler.expressions._
+import mekhanikov.compiler.statements.WhileStatements
 
 import scala.collection.JavaConversions._
 
@@ -14,7 +14,7 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   private val variables = new Variables(buildContext)
   private val ariphmetics = new Ariphmetics(buildContext)
   private val functionCalls = new FunctionCalls(buildContext)
-  private val ifStatements = new IfStatements(buildContext)
+  private val condExpr = new CondExpr(buildContext)
   private val whileStatements = new WhileStatements(buildContext)
   private val variableDeclarations = new VariableDeclarations(buildContext)
   private val functionDefinitions = new FunctionDefinitions(buildContext)
@@ -87,9 +87,9 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
   override def visitJunction(ctx: JunctionContext): Option[Value] =
     Some(ariphmetics.junction(ctx))
 
-  override def visitIfStmt(ctx: IfStmtContext): Option[Value] = {
-    ifStatements.ifStatement(ctx)
-    None
+
+  override def visitCondExpr(ctx: CondExprContext): Option[Value] = {
+    Some(condExpr.condExpr(ctx))
   }
 
   override def visitWhileStmt(ctx: WhileStmtContext): Option[Value] = {
@@ -104,6 +104,10 @@ class CodegenProgramVisitor extends ProgramBaseVisitor[Option[Value]] {
 
   override def visitBlock(ctx: BlockContext): Option[Value] = {
     ctx.statement.foreach(stmt => visit(stmt))
-    None
+    if (Option(ctx.expression).isDefined) {
+      visit(ctx.expression)
+    } else {
+      None
+    }
   }
 }

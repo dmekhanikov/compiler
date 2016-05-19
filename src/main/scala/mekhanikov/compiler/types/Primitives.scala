@@ -1,5 +1,6 @@
 package mekhanikov.compiler.types
 
+import mekhanikov.compiler.Value
 import org.bytedeco.javacpp.LLVM._
 
 object Primitives {
@@ -13,6 +14,7 @@ object Primitives {
 
   val VOID = new Type("void") {
     override def toLLVMType: LLVMTypeRef = LLVMVoidType()
+    val value = new Value(this, null)
   }
 
   def forName(name: String): Option[Type] = {

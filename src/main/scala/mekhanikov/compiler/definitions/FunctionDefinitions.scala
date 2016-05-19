@@ -85,13 +85,13 @@ class FunctionDefinitions(val buildContext: BuildContext) {
   }
 
   def buildReturn(ctx: FunctionBodyContext, returnType: Type): Unit = {
-    if (Option(ctx.returnStmt).isDefined && Option(ctx.returnStmt.expression).isDefined) {
-      val exprValue = visitor.visit(ctx.returnStmt.expression).get
-      val returned = buildContext.cast(exprValue, returnType, ctx.returnStmt)
-      LLVMBuildRet(builder, returned.value)
-    } else if (returnType == Primitives.VOID) {
+    if (returnType == Primitives.VOID) {
       LLVMBuildRetVoid(builder)
-    } else {
+    } else if (Option(ctx.expression).isDefined) {
+      val exprValue = visitor.visit(ctx.expression).get
+      val returned = buildContext.cast(exprValue, returnType, ctx.expression)
+      LLVMBuildRet(builder, returned.value)
+    }  else {
       throw new CompilationException(ctx, "cannot return void from this function")
     }
   }
