@@ -1,6 +1,6 @@
 package mekhanikov.compiler.definitions
 
-import mekhanikov.compiler.ProgramParser.{FunctionBodyContext, FunctionDefContext, ParameterListContext}
+import mekhanikov.compiler.ProgramParser._
 import mekhanikov.compiler._
 import mekhanikov.compiler.entities.{Function, Variable}
 import mekhanikov.compiler.types.{Primitives, Type}
@@ -17,33 +17,44 @@ class FunctionDefinitions(val buildContext: BuildContext) {
   def function(ctx: FunctionDefContext): Function = {
     val returnType = buildContext.findType(ctx.ID(0).getText, ctx)
     val functionName = ctx.ID(1).getText
-    functionBody(ctx.functionBody, functionName, returnType, Option(ctx.parameterList))
+    val function = functionHead(functionName, returnType, Option(ctx.parameterList), ctx.functionBody)
+    functionBody(ctx.functionBody, function, returnType, Option(ctx.parameterList))
   }
 
   def functionBody(functionBodyCtx: FunctionBodyContext,
-                   functionName: String,
+                   function: Function,
                    returnType: Type,
                    parameterListCtx: Option[ParameterListContext]): Function = {
-    val function = functionHead(functionName, returnType, parameterListCtx, functionBodyCtx)
     val functionSignature = buildContext.functionSignature(function.name, function.argTypes)
-    buildContext.currentFunction = Some(function.llvmFunction)
+    buildContext.currentFunction = Some(function)
     buildContext.functions(functionSignature) = function
     buildContext.variables.clear()
     val di = if (buildContext.currentStructure.isDefined) {
-      addVariable("this", buildContext.currentStructure.get, function.llvmFunction, 0)
+      val varValue = LLVMGetParam(function.llvmFunction, 0)
+      addVariable("this", buildContext.currentStructure.get, function.llvmFunction, varValue)
       1
     } else 0
+    val functionStart = LLVMAppendBasicBlock(function.llvmFunction, "functionStart")
+    buildContext.functionStartBlock = Some(functionStart)
+    val prevBlock = LLVMGetPreviousBasicBlock(functionStart)
+    LLVMBuildBr(builder, functionStart)
+    LLVMPositionBuilderAtEnd(builder, functionStart)
     if (parameterListCtx.isDefined) {
       for ((parCtx, i) <- parameterListCtx.get.parameter.zipWithIndex) {
         val typeName = parCtx.ID(0).getText
         val varType = buildContext.findType(typeName, parCtx)
         val varName = parCtx.ID(1).getText
-        addVariable(varName, varType, function.llvmFunction, i + di)
+        val varValue = LLVMGetParam(function.llvmFunction, i + di)
+        val varPhi = LLVMBuildPhi(builder, varType.toLLVMType, "varPhi")
+        LLVMAddIncoming(varPhi, varValue, prevBlock, 1)
+        buildContext.functionArguments ++= List(varPhi)
+        addVariable(varName, varType, function.llvmFunction, varPhi)
       }
     }
     functionBodyCtx.varDecl.foreach(visitor.visit)
     functionBodyCtx.statement.foreach(visitor.visit)
     buildReturn(functionBodyCtx, returnType)
+    buildContext.functionArguments = List()
     function
   }
 
@@ -77,8 +88,7 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     new Function(qualifiedFunctionName, returnType, argTypes, llvmFunction)
   }
 
-  private def addVariable(varName: String, varType: Type, llvmFunction: LLVMValueRef, i: Int): Unit = {
-    val value = LLVMGetParam(llvmFunction, i)
+  private def addVariable(varName: String, varType: Type, llvmFunction: LLVMValueRef, value: LLVMValueRef): Unit = {
     val parameter = new Variable(varType, varName)
     parameter.value = new Value(varType, value)
     buildContext.variables(varName) = parameter
@@ -86,9 +96,15 @@ class FunctionDefinitions(val buildContext: BuildContext) {
 
   def buildReturn(ctx: FunctionBodyContext, returnType: Type): Unit = {
     if (returnType == Primitives.VOID) {
+      if (Option(ctx.expression).isDefined) {
+        visitor.visit(ctx.expression)
+      }
       LLVMBuildRetVoid(builder)
     } else if (Option(ctx.expression).isDefined) {
       val exprValue = visitor.visit(ctx.expression).get
+      if (exprValue.valType == Type.ABORTED) {
+        throw new CompilationException(ctx, "this function may never terminate")
+      }
       val returned = buildContext.cast(exprValue, returnType, ctx.expression)
       LLVMBuildRet(builder, returned.value)
     }  else {

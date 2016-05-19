@@ -2,8 +2,8 @@ package mekhanikov.compiler
 
 import mekhanikov.compiler.ProgramParser.ProgramContext
 import org.antlr.v4.runtime.{ANTLRFileStream, ANTLRInputStream, CommonTokenStream}
-import org.bytedeco.javacpp.{BytePointer, Pointer}
 import org.bytedeco.javacpp.LLVM._
+import org.bytedeco.javacpp.{BytePointer, Pointer}
 
 object Compiler {
 

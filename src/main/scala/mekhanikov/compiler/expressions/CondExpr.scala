@@ -15,7 +15,7 @@ class CondExpr(val buildContext: BuildContext) {
   private val assignmentSearchVisitor = new AssignmentSearchVisitor(buildContext)
 
   def condExpr(ctx: CondExprContext): Value = {
-    val currentFunction = buildContext.currentFunction.get
+    val currentFunction = buildContext.currentFunction.get.llvmFunction
     val thenBlock = LLVMAppendBasicBlock(currentFunction, "ifTrue")
     val elseBlock = LLVMAppendBasicBlock(currentFunction, "ifFalse")
     val endIf = LLVMAppendBasicBlock(currentFunction, "endIf")
@@ -44,21 +44,29 @@ class CondExpr(val buildContext: BuildContext) {
     LLVMMoveBasicBlockAfter(thenBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, thenBlock)
     val thenValue = visitor.visit(ctx.block(0))
-    LLVMBuildBr(builder, endIf)
-    val lastThenBlock = LLVMGetLastBasicBlock(currentFunction)
-    addIncomings(thenAssignedVarNames, lastThenBlock, phiVals)
-    restoreValues(oldValues)
-    addIncomings(elseAssignedVarNames &~ thenAssignedVarNames, lastThenBlock, phiVals)
+    if (thenValue.isEmpty || thenValue.get != Type.ABORTED.value) {
+      LLVMBuildBr(builder, endIf)
+      val lastThenBlock = LLVMGetLastBasicBlock(currentFunction)
+      addIncomings(thenAssignedVarNames, lastThenBlock, phiVals)
+      restoreValues(oldValues)
+      addIncomings(elseAssignedVarNames &~ thenAssignedVarNames, lastThenBlock, phiVals)
+    } else {
+      restoreValues(oldValues)
+    }
 
     // else branch
     LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, elseBlock)
     val elseValue = visitor.visit(ctx.block(1))
-    LLVMBuildBr(builder, endIf)
-    val lastElseBlock = LLVMGetLastBasicBlock(currentFunction)
-    addIncomings(elseAssignedVarNames, lastElseBlock, phiVals)
-    restoreValues(oldValues)
-    addIncomings(thenAssignedVarNames &~ elseAssignedVarNames, lastElseBlock, phiVals)
+    if (elseValue.isEmpty || elseValue.get != Type.ABORTED.value) {
+      LLVMBuildBr(builder, endIf)
+      val lastElseBlock = LLVMGetLastBasicBlock(currentFunction)
+      addIncomings(elseAssignedVarNames, lastElseBlock, phiVals)
+      restoreValues(oldValues)
+      addIncomings(thenAssignedVarNames &~ elseAssignedVarNames, lastElseBlock, phiVals)
+    } else {
+      restoreValues(oldValues)
+    }
 
     // store phi nodes as variables' values
     for ((name, value) <- phiVals) {
@@ -68,17 +76,26 @@ class CondExpr(val buildContext: BuildContext) {
     LLVMMoveBasicBlockAfter(endIf, LLVMGetLastBasicBlock(currentFunction))     // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, endIf)
 
+    // choose result
     if (thenValue.isDefined && elseValue.isDefined) {
-      val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
-      if (resultType == Primitives.VOID) {
-        Primitives.VOID.value
+      if (thenValue.get == Type.ABORTED.value && thenValue.get == Type.ABORTED.value) {
+        Type.ABORTED.value
+      } else if (thenValue.get == Type.ABORTED.value) {
+        elseValue.get
+      } else if (elseValue.get == Type.ABORTED.value) {
+        thenValue.get
       } else {
-        val llvmResult = LLVMBuildPhi(builder, resultType.toLLVMType, "ifResult")
-        val thenCast = buildContext.cast(thenValue.get, resultType, ctx)
-        val elseCast = buildContext.cast(elseValue.get, resultType, ctx)
-        LLVMAddIncoming(llvmResult, new PointerPointer(thenCast.value, elseCast.value),
-                                    new PointerPointer(thenBlock, elseBlock), 2)
-        new Value(resultType, llvmResult)
+        val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
+        if (resultType == Primitives.VOID) {
+          Primitives.VOID.value
+        } else {
+          val llvmResult = LLVMBuildPhi(builder, resultType.toLLVMType, "ifResult")
+          val thenCast = buildContext.cast(thenValue.get, resultType, ctx)
+          val elseCast = buildContext.cast(elseValue.get, resultType, ctx)
+          LLVMAddIncoming(llvmResult, new PointerPointer(thenCast.value, elseCast.value),
+            new PointerPointer(thenBlock, elseBlock), 2)
+          new Value(resultType, llvmResult)
+        }
       }
     } else {
       Primitives.VOID.value

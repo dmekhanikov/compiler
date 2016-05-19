@@ -14,7 +14,7 @@ class WhileStatements(val buildContext: BuildContext) {
   private val assignmentSearchVisitor = new AssignmentSearchVisitor(buildContext)
 
   def whileStatement(ctx: WhileStmtContext): Unit = {
-    val currentFunction = buildContext.currentFunction.get
+    val currentFunction = buildContext.currentFunction.get.llvmFunction
     val whileHead = LLVMAppendBasicBlock(currentFunction, "whileHead")
     val whileBody = LLVMAppendBasicBlock(currentFunction, "whileBody")
     val whileEnd = LLVMAppendBasicBlock(currentFunction, "whileEnd")

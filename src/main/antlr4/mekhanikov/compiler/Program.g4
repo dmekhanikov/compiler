@@ -29,7 +29,7 @@ expressionList
 
 statement
     : expression ';'                                #exprStmt
-    | 'while' '(' expression ')' block #whileStmt
+    | 'while' '(' expression ')' block              #whileStmt
     ;
 
 structDef

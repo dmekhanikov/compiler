@@ -13,9 +13,11 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
 
   val functions = mutable.HashMap[String, Function]() // name -> (return type, arguments types)
   val structures = mutable.HashMap[String, Struct]()
-  var currentFunction: Option[LLVMValueRef] = None
+  var currentFunction: Option[Function] = None
   var currentStructure: Option[Struct] = None
   val variables = mutable.HashMap[String, Variable]()  // name -> (typename, value)
+  var functionArguments = List[LLVMValueRef]()
+  var functionStartBlock: Option[LLVMBasicBlockRef] = None
 
   val builder = LLVMCreateBuilder
   val module = LLVMModuleCreateWithName("module")

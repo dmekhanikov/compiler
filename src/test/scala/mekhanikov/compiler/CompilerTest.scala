@@ -893,4 +893,62 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 1)
   }
+
+  @Test
+  def simpleTailCall(): Unit = {
+    val src =
+      """int f(int x, int acc) {
+        |   if (x == 0) {
+        |     acc
+        |   } else {
+        |     f(x - 1, acc + 2)
+        |   }
+        |}
+        |int box() {
+        |   f(1000000, 0)
+        |}
+      """.stripMargin
+    runTest(src, 2000000)
+  }
+
+  @Test
+  def infiniteRecursion(): Unit = {
+    expectSemanticException(
+      """int box() {
+        |   box()
+        |}
+      """.stripMargin)
+    expectSemanticException(
+      """int box() {
+        |   if (true) {
+        |     box()
+        |   } else {
+        |     box()
+        |   }
+        |}
+      """.stripMargin)
+  }
+
+  @Test
+  def simpleMethodTailCall(): Unit = {
+    val src =
+      """struct Num {
+        |   private int n;
+        |   constructor(int n) { this.n = n }
+        |   private int f(int n, int acc) {
+        |     if (n == 0) {
+        |       acc
+        |     } else {
+        |       this.f(n - 1, acc + 2)
+        |     }
+        |   }
+        |   int f() { this.f(this.n, 0) }
+        |}
+        |int box() {
+        |   Num num = new Num(1000000);
+        |   num.f()
+        |}
+      """.stripMargin
+    runTest(src, 2000000)
+  }
 }

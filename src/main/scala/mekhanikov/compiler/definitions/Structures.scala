@@ -41,15 +41,23 @@ class Structures(buildContext: BuildContext,
           }
         }
       } else if (Option(memberDeclCtx.functionDef).isDefined) {
-        val function = functionDefinitions.function(memberDeclCtx.functionDef)
+        val functionDefCtx = memberDeclCtx.functionDef
+        val parameterListContext = Option(functionDefCtx.parameterList)
+        val returnType = buildContext.findType(functionDefCtx.ID(0).getText, functionDefCtx)
+        val functionName = functionDefCtx.ID(1).getText
+        val function = functionDefinitions.functionHead(functionName, returnType, parameterListContext, functionDefCtx)
         val method = new Method(function, visibility)
         struct.methods ::= method
+        functionDefinitions.functionBody(memberDeclCtx.functionDef.functionBody, function, returnType, parameterListContext)
       } else {
+        val parameterListContext: Option[ParameterListContext] = Option(memberDeclCtx.constructorDef.parameterList)
+        val function = functionDefinitions.functionHead(CONSTRUCTOR_METHOD_NAME, Primitives.VOID,
+                                                        parameterListContext, memberDeclCtx.constructorDef.functionBody)
         val constructorFunction = functionDefinitions.functionBody(
           memberDeclCtx.constructorDef.functionBody,
-          CONSTRUCTOR_METHOD_NAME,
+          function,
           Primitives.VOID,
-          Option(memberDeclCtx.constructorDef.parameterList))
+          parameterListContext)
         val method = new Method(constructorFunction, visibility)
         struct.methods ::= method
       }
