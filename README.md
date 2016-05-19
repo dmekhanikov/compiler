@@ -6,7 +6,8 @@
     - `+`, `-`, `*`, `/`, `%`
     - `==`, `!=`, `<`, `<=`, `>`, `>=`
     - `&&`, `||`
-- `if` and `while` statements
+- conditional expressions
+- `while` statements
 - `printInt`, `printBool`, `readInt` and user-defined functions
 - functions overloading
 - structures with fields and methods
@@ -26,13 +27,13 @@ Fast power computation:
 int power(int x, int y) {
     int result = 1;
     while (x > 0) {
-        if (y % 2 == 1) {
-            r = r * x;
-        } else {}
+        r = if (y % 2 == 1) {
+                r * x
+            } else { r };
         x = x * x;
         y = y / 2;
     }
-    return result;
+    result
 }
 ```
 Structure of a rectangle:
@@ -46,12 +47,12 @@ struct Rectangle {
     }
 
     int square() {
-        return this.w * this.h;
+        this.w * this.h
     }
 
     bool equals(Rectangle other) {
-        return this.w == other.w && 
-                this.h == other.h;
+        this.w == other.w &&
+        this.h == other.h
     }
 }
 ```
