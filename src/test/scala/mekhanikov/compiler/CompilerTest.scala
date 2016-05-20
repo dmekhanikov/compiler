@@ -951,4 +951,61 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 2000000)
   }
+
+  @Test
+  def accumulatedFunctionTailCall(): Unit = {
+    val src =
+      """int f(int x) {
+        |   if (x == 0) {
+        |     5
+        |   } else {
+        |     f(x - 1) + 2
+        |   }
+        |}
+        |int box() {
+        |   f(1000000)
+        |}
+      """.stripMargin
+    runTest(src, 2000005)
+  }
+
+  @Test
+  def accumulatedMethodTailCall(): Unit = {
+    val src =
+      """struct Num {
+        |   private int n;
+        |   constructor(int n) { this.n = n }
+        |   private int f(int n) {
+        |     if (n == 0) {
+        |       5
+        |     } else {
+        |       this.f(n - 1) + 2
+        |     }
+        |   }
+        |   int f() { this.f(this.n) }
+        |}
+        |int box() {
+        |   Num num = new Num(1000000);
+        |   num.f()
+        |}
+      """.stripMargin
+    runTest(src, 2000005)
+  }
+
+  @Test
+  def recursiveFibonacci(): Unit = {
+    val src =
+      """int fib(int n) {
+        |   if (n == 0 || n == 1) {
+        |     1
+        |   } else {
+        |     fib(n - 1) + fib(n - 2)
+        |   }
+        |}
+        |int box() {
+        |   fib(10)
+        |}
+      """.stripMargin
+    runTest(src, 89)
+  }
 }

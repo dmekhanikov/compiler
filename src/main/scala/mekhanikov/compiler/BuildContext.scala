@@ -18,6 +18,9 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
   val variables = mutable.HashMap[String, Variable]()  // name -> (typename, value)
   var functionArguments = List[LLVMValueRef]()
   var functionStartBlock: Option[LLVMBasicBlockRef] = None
+  var accPhi: Option[LLVMValueRef] = None
+  var acc: Option[LLVMValueRef] = None
+  var tailCallReserved = false
 
   val builder = LLVMCreateBuilder
   val module = LLVMModuleCreateWithName("module")

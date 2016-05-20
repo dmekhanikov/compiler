@@ -2,7 +2,7 @@ package mekhanikov.compiler.expressions
 
 import mekhanikov.compiler.ProgramParser.CondExprContext
 import mekhanikov.compiler._
-import mekhanikov.compiler.types.{Primitives, Type}
+import mekhanikov.compiler.types.{LLVMAbortedValue, Primitives, Type}
 import org.bytedeco.javacpp.LLVM._
 import org.bytedeco.javacpp.PointerPointer
 
@@ -44,13 +44,16 @@ class CondExpr(val buildContext: BuildContext) {
     LLVMMoveBasicBlockAfter(thenBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, thenBlock)
     val thenValue = visitor.visit(ctx.block(0))
-    if (thenValue.isEmpty || thenValue.get != Type.ABORTED.value) {
+    if (thenValue.isEmpty || thenValue.get.value != LLVMAbortedValue) {
       LLVMBuildBr(builder, endIf)
       val lastThenBlock = LLVMGetLastBasicBlock(currentFunction)
       addIncomings(thenAssignedVarNames, lastThenBlock, phiVals)
       restoreValues(oldValues)
       addIncomings(elseAssignedVarNames &~ thenAssignedVarNames, lastThenBlock, phiVals)
     } else {
+      if (thenValue.get.value == LLVMAbortedValue) {
+        tailCall(thenBlock)
+      }
       restoreValues(oldValues)
     }
 
@@ -58,13 +61,16 @@ class CondExpr(val buildContext: BuildContext) {
     LLVMMoveBasicBlockAfter(elseBlock, LLVMGetLastBasicBlock(currentFunction)) // ordering the blocks
     LLVMPositionBuilderAtEnd(builder, elseBlock)
     val elseValue = visitor.visit(ctx.block(1))
-    if (elseValue.isEmpty || elseValue.get != Type.ABORTED.value) {
+    if (elseValue.isEmpty || elseValue.get.value != LLVMAbortedValue) {
       LLVMBuildBr(builder, endIf)
       val lastElseBlock = LLVMGetLastBasicBlock(currentFunction)
       addIncomings(elseAssignedVarNames, lastElseBlock, phiVals)
       restoreValues(oldValues)
       addIncomings(thenAssignedVarNames &~ elseAssignedVarNames, lastElseBlock, phiVals)
     } else {
+      if (elseValue.get.value == LLVMAbortedValue) {
+        tailCall(elseBlock)
+      }
       restoreValues(oldValues)
     }
 
@@ -78,14 +84,14 @@ class CondExpr(val buildContext: BuildContext) {
 
     // choose result
     if (thenValue.isDefined && elseValue.isDefined) {
-      if (thenValue.get == Type.ABORTED.value && thenValue.get == Type.ABORTED.value) {
-        Type.ABORTED.value
-      } else if (thenValue.get == Type.ABORTED.value) {
-        elseValue.get
-      } else if (elseValue.get == Type.ABORTED.value) {
-        thenValue.get
+      val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
+      if (thenValue.get.value == LLVMAbortedValue && thenValue.get.value == LLVMAbortedValue) {
+        new Value(resultType, LLVMAbortedValue)
+      } else if (thenValue.get.value == LLVMAbortedValue) {
+        buildContext.cast(elseValue.get, resultType, ctx)
+      } else if (elseValue.get.value == LLVMAbortedValue) {
+        buildContext.cast(thenValue.get, resultType, ctx)
       } else {
-        val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
         if (resultType == Primitives.VOID) {
           Primitives.VOID.value
         } else {
@@ -100,6 +106,13 @@ class CondExpr(val buildContext: BuildContext) {
     } else {
       Primitives.VOID.value
     }
+  }
+
+  private def tailCall(fromBlock: LLVMBasicBlockRef): Unit = {
+    val acc = LLVMBuildAdd(builder, buildContext.accPhi.get, buildContext.acc.get, "acc")
+    LLVMAddIncoming(buildContext.accPhi.get, acc, fromBlock, 1)
+    buildContext.tailCallReserved = false
+    LLVMBuildBr(builder, buildContext.functionStartBlock.get)
   }
 
   private def addIncomings(varNames: Set[String], block: LLVMBasicBlockRef, phiVals: mutable.Map[String, LLVMValueRef]): Unit = {

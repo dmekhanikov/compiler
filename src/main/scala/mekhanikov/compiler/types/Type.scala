@@ -46,9 +46,4 @@ object Type {
       1
     }
   }
-
-  val ABORTED = new Type("aborted") {
-    override def toLLVMType: LLVMTypeRef = LLVMVoidType
-    val value = new Value(this, null)
-  }
 }

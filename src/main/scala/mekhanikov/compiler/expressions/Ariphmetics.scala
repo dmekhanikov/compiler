@@ -2,7 +2,7 @@ package mekhanikov.compiler.expressions
 
 import mekhanikov.compiler.ProgramParser._
 import mekhanikov.compiler._
-import mekhanikov.compiler.types.{Primitives, Type}
+import mekhanikov.compiler.types.{LLVMAbortedValue, Primitives, Type}
 import org.bytedeco.javacpp.LLVM._
 
 class Ariphmetics(val buildContext: BuildContext) {
@@ -16,13 +16,30 @@ class Ariphmetics(val buildContext: BuildContext) {
     if (left.valType != Primitives.INT || right.valType != Primitives.INT) {
       throw new CompilationException(ctx, s"invalid operand types: (${left.valType.name}, ${right.valType.name})")
     }
-    val result = ctx.SIGN.getSymbol.getText match {
-      case "+" =>
-        LLVMBuildAdd(builder, left.value, right.value, "add")
-      case "-" =>
-        LLVMBuildSub(builder, left.value, right.value, "sub")
+    if (left.value == LLVMAbortedValue || right.value == LLVMAbortedValue) {
+      val (leftVal, rightVal) = if (left.value == LLVMAbortedValue) {
+        (buildContext.acc.get, right.value)
+      } else {
+        (left.value, buildContext.acc.get)
+      }
+      val acc = ctx.SIGN.getText match {
+        case "+" =>
+          LLVMBuildAdd(builder, leftVal, rightVal, "add")
+        case "-" =>
+          LLVMBuildSub(builder, leftVal, rightVal, "sub")
+      }
+      buildContext.acc = Some(acc)
+      new Value(Primitives.INT, LLVMAbortedValue)
+    } else {
+      val result =
+        ctx.SIGN.getText match {
+          case "+" =>
+            LLVMBuildAdd(builder, left.value, right.value, "add")
+          case "-" =>
+            LLVMBuildSub(builder, left.value, right.value, "sub")
+        }
+      new Value(Primitives.INT, result)
     }
-    new Value(Primitives.INT, result)
   }
 
   def muldiv(ctx: MulDivContext): Value = {
@@ -47,13 +64,21 @@ class Ariphmetics(val buildContext: BuildContext) {
     if (value.valType != Primitives.INT) {
       throw new CompilationException(ctx, s"invalid operand type: ${value.valType.name}")
     }
-    val resultValue = if (ctx.SIGN.getSymbol.getText == "-") {
-      val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
-      LLVMBuildSub(builder, zero, value.value, "sub")
+    val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
+    if (value.value == LLVMAbortedValue) {
+      if (ctx.SIGN.getSymbol.getText == "-") {
+        val acc = LLVMBuildSub(builder, zero, buildContext.acc.get, "sub")
+        buildContext.acc = Some(acc)
+      }
+      new Value(value.valType, LLVMAbortedValue)
     } else {
-      value.value
+      val resultValue = if (ctx.SIGN.getSymbol.getText == "-") {
+        LLVMBuildSub(builder, zero, value.value, "sub")
+      } else {
+        value.value
+      }
+      new Value(value.valType, resultValue)
     }
-    new Value(value.valType, resultValue)
   }
 
   def comparison(ctx: ComparisonContext): Value = {

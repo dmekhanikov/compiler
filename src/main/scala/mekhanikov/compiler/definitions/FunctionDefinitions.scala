@@ -3,7 +3,7 @@ package mekhanikov.compiler.definitions
 import mekhanikov.compiler.ProgramParser._
 import mekhanikov.compiler._
 import mekhanikov.compiler.entities.{Function, Variable}
-import mekhanikov.compiler.types.{Primitives, Type}
+import mekhanikov.compiler.types.{LLVMAbortedValue, Primitives, Type}
 import org.antlr.v4.runtime.ParserRuleContext
 import org.bytedeco.javacpp.LLVM._
 
@@ -39,6 +39,8 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     val prevBlock = LLVMGetPreviousBasicBlock(functionStart)
     LLVMBuildBr(builder, functionStart)
     LLVMPositionBuilderAtEnd(builder, functionStart)
+    buildContext.accPhi = Some(LLVMBuildPhi(builder, LLVMInt32Type, "accPhi"))
+    LLVMAddIncoming(buildContext.accPhi.get, LLVMConstInt(LLVMInt32Type, 0, 0), prevBlock, 1)
     if (parameterListCtx.isDefined) {
       for ((parCtx, i) <- parameterListCtx.get.parameter.zipWithIndex) {
         val typeName = parCtx.ID(0).getText
@@ -101,9 +103,13 @@ class FunctionDefinitions(val buildContext: BuildContext) {
       }
       LLVMBuildRetVoid(builder)
     } else if (Option(ctx.expression).isDefined) {
-      val exprValue = visitor.visit(ctx.expression).get
-      if (exprValue.valType == Type.ABORTED) {
+      var exprValue = visitor.visit(ctx.expression).get
+      if (exprValue.value == LLVMAbortedValue) {
         throw new CompilationException(ctx, "this function may never terminate")
+      }
+      if (exprValue.valType == Primitives.INT) {
+        val sum = LLVMBuildAdd(builder, buildContext.accPhi.get, exprValue.value, "add")
+        exprValue = new Value(exprValue.valType, sum)
       }
       val returned = buildContext.cast(exprValue, returnType, ctx.expression)
       LLVMBuildRet(builder, returned.value)

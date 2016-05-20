@@ -1,7 +1,7 @@
 package mekhanikov.compiler.expressions
 
 import mekhanikov.compiler.ProgramParser._
-import mekhanikov.compiler.types.{Primitives, Type}
+import mekhanikov.compiler.types.{LLVMAbortedValue, Primitives, Type}
 import mekhanikov.compiler.{BuildContext, CompilationException, Value}
 import mekhanikov.compiler.entities.Function
 import org.antlr.v4.runtime.{ParserRuleContext, RuleContext}
@@ -31,14 +31,15 @@ class FunctionCalls(val buildContext: BuildContext) {
   }
 
   def buildCall(function: Function, args: List[Value], ctx: ParserRuleContext): Value = {
-    if (function == buildContext.currentFunction.get && isTailExpr(ctx)) {
+    if (function == buildContext.currentFunction.get && !buildContext.tailCallReserved && isTailExpr(ctx)) {
+      buildContext.tailCallReserved = true
+      buildContext.acc = Some(LLVMConstInt(LLVMInt32Type, 0, 0))
       val lastBlock = LLVMGetLastBasicBlock(function.llvmFunction)
       val di = if (buildContext.currentStructure.isDefined) 1 else 0
       buildContext.functionArguments.zipWithIndex.foreach { case (value, i) =>
         LLVMAddIncoming(value, args(i + di).value, lastBlock, 1)
       }
-      LLVMBuildBr(builder, buildContext.functionStartBlock.get)
-      Type.ABORTED.value
+      new Value(function.returnType, LLVMAbortedValue)
     } else {
       val llvmArgs = args.zipWithIndex.map { case (arg, i) =>
         val expectedType = function.argTypes(i)
@@ -70,6 +71,9 @@ class FunctionCalls(val buildContext: BuildContext) {
     ctx.parent match {
       case blockCtx: BlockContext => blockCtx.expression == ctx && isTailExpr(blockCtx)
       case condCtx: CondExprContext => (condCtx.block(0) == ctx || condCtx.block(1) == ctx) && isTailExpr(condCtx)
+      case sumCtx: SumContext => isTailExpr(sumCtx)
+      case signedExprCtx: SignedExprContext => isTailExpr(signedExprCtx)
+      case parensExprCtx: ParensContext => isTailExpr(parensExprCtx)
       case functionBodyCtx: FunctionBodyContext => functionBodyCtx.expression == ctx
       case _ => false
     }
