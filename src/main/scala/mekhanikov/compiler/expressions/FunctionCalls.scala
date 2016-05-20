@@ -33,7 +33,8 @@ class FunctionCalls(val buildContext: BuildContext) {
   def buildCall(function: Function, args: List[Value], ctx: ParserRuleContext): Value = {
     if (function == buildContext.currentFunction.get && !buildContext.tailCallReserved && isTailExpr(ctx)) {
       buildContext.tailCallReserved = true
-      buildContext.acc = Some(LLVMConstInt(LLVMInt32Type, 0, 0))
+      buildContext.sacc = Some(LLVMConstInt(LLVMInt32Type, 0, 0))
+      buildContext.macc = Some(LLVMConstInt(LLVMInt32Type, 1, 0))
       val lastBlock = LLVMGetLastBasicBlock(function.llvmFunction)
       val di = if (buildContext.currentStructure.isDefined) 1 else 0
       buildContext.functionArguments.zipWithIndex.foreach { case (value, i) =>
@@ -72,6 +73,7 @@ class FunctionCalls(val buildContext: BuildContext) {
       case blockCtx: BlockContext => blockCtx.expression == ctx && isTailExpr(blockCtx)
       case condCtx: CondExprContext => (condCtx.block(0) == ctx || condCtx.block(1) == ctx) && isTailExpr(condCtx)
       case sumCtx: SumContext => isTailExpr(sumCtx)
+      case mulDivCtx: MulDivContext if mulDivCtx.MULDIV.getText == "*" => isTailExpr(mulDivCtx)
       case signedExprCtx: SignedExprContext => isTailExpr(signedExprCtx)
       case parensExprCtx: ParensContext => isTailExpr(parensExprCtx)
       case functionBodyCtx: FunctionBodyContext => functionBodyCtx.expression == ctx

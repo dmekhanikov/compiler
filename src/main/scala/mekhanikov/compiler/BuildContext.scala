@@ -16,10 +16,14 @@ class BuildContext(val visitor: ProgramBaseVisitor[Option[Value]]) {
   var currentFunction: Option[Function] = None
   var currentStructure: Option[Struct] = None
   val variables = mutable.HashMap[String, Variable]()  // name -> (typename, value)
+
+  // TCO-related
   var functionArguments = List[LLVMValueRef]()
   var functionStartBlock: Option[LLVMBasicBlockRef] = None
-  var accPhi: Option[LLVMValueRef] = None
-  var acc: Option[LLVMValueRef] = None
+  var saccPhi: Option[LLVMValueRef] = None
+  var sacc: Option[LLVMValueRef] = None
+  var maccPhi: Option[LLVMValueRef] = None
+  var macc: Option[LLVMValueRef] = None
   var tailCallReserved = false
 
   val builder = LLVMCreateBuilder

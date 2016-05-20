@@ -85,7 +85,7 @@ class CondExpr(val buildContext: BuildContext) {
     // choose result
     if (thenValue.isDefined && elseValue.isDefined) {
       val resultType = Type.lca(thenValue.get.valType, elseValue.get.valType)
-      if (thenValue.get.value == LLVMAbortedValue && thenValue.get.value == LLVMAbortedValue) {
+      if (thenValue.get.value == LLVMAbortedValue && elseValue.get.value == LLVMAbortedValue) {
         new Value(resultType, LLVMAbortedValue)
       } else if (thenValue.get.value == LLVMAbortedValue) {
         buildContext.cast(elseValue.get, resultType, ctx)
@@ -109,8 +109,13 @@ class CondExpr(val buildContext: BuildContext) {
   }
 
   private def tailCall(fromBlock: LLVMBasicBlockRef): Unit = {
-    val acc = LLVMBuildAdd(builder, buildContext.accPhi.get, buildContext.acc.get, "acc")
-    LLVMAddIncoming(buildContext.accPhi.get, acc, fromBlock, 1)
+    val msacc = LLVMBuildMul(builder, buildContext.sacc.get, buildContext.maccPhi.get, "mul")
+    val sacc = LLVMBuildAdd(builder, buildContext.saccPhi.get, msacc, "acc")
+    LLVMAddIncoming(buildContext.saccPhi.get, sacc, fromBlock, 1)
+
+    val macc = LLVMBuildMul(builder, buildContext.maccPhi.get, buildContext.macc.get, "mul")
+    LLVMAddIncoming(buildContext.maccPhi.get, macc, fromBlock, 1)
+
     buildContext.tailCallReserved = false
     LLVMBuildBr(builder, buildContext.functionStartBlock.get)
   }

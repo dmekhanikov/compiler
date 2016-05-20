@@ -1008,4 +1008,55 @@ class CompilerTest {
       """.stripMargin
     runTest(src, 89)
   }
+
+  @Test
+  def recursiveFac(): Unit = {
+    val src =
+      """int fac(int n) {
+        |   if (n == 0) {
+        |     1
+        |   } else {
+        |     n * fac(n - 1)
+        |   }
+        |}
+        |int box() {
+        |   fac(6)
+        |}
+      """.stripMargin
+    runTest(src, 720)
+  }
+
+  @Test
+  def recursiveComplexCompCorrectness(): Unit = {
+    val src =
+      """int f(int n) {
+        |   if (n == 0) {
+        |     1
+        |   } else {
+        |     (2 * f(n - 1) - 1) * 3
+        |   }
+        |}
+        |int box() {
+        |   f(5)
+        |}
+      """.stripMargin
+    runTest(src, 3111)
+  }
+
+  @Test
+  def recursiveComplexCompEfficiency(): Unit = {
+    val src =
+      """int f(int n) {
+        |   if (n == 0) {
+        |     1
+        |   } else {
+        |     (5 - f(n - 1)) * 1 - 5
+        |   }
+        |}
+        |int box() {
+        |   f(1000000)
+        |}
+      """.stripMargin
+    runTest(src, 1)
+  }
 }

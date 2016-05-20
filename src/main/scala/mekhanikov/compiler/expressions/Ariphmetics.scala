@@ -17,18 +17,19 @@ class Ariphmetics(val buildContext: BuildContext) {
       throw new CompilationException(ctx, s"invalid operand types: (${left.valType.name}, ${right.valType.name})")
     }
     if (left.value == LLVMAbortedValue || right.value == LLVMAbortedValue) {
-      val (leftVal, rightVal) = if (left.value == LLVMAbortedValue) {
-        (buildContext.acc.get, right.value)
-      } else {
-        (left.value, buildContext.acc.get)
-      }
-      val acc = ctx.SIGN.getText match {
+      val (leftVal, rightVal) =
+        if (left.value == LLVMAbortedValue) {
+          (buildContext.sacc.get, right.value)
+        } else {
+          (left.value, buildContext.sacc.get)
+        }
+      val sacc = ctx.SIGN.getText match {
         case "+" =>
           LLVMBuildAdd(builder, leftVal, rightVal, "add")
         case "-" =>
           LLVMBuildSub(builder, leftVal, rightVal, "sub")
       }
-      buildContext.acc = Some(acc)
+      buildContext.sacc = Some(sacc)
       new Value(Primitives.INT, LLVMAbortedValue)
     } else {
       val result =
@@ -48,15 +49,25 @@ class Ariphmetics(val buildContext: BuildContext) {
     if (left.valType != Primitives.INT || right.valType != Primitives.INT) {
       throw new CompilationException(ctx, s"invalid operand types: (${left.valType.name}, ${right.valType.name})")
     }
-    val result = ctx.MULDIV.getSymbol.getText match {
-      case "*" =>
-        LLVMBuildMul(builder, left.value, right.value, "mul")
-      case "/" =>
-        LLVMBuildSDiv(builder, left.value, right.value, "div")
-      case "%" =>
-        LLVMBuildSRem(builder, left.value, right.value, "mod")
+    if (left.value == LLVMAbortedValue || right.value == LLVMAbortedValue) {
+      // it only can be a multiplication
+      val realVal = if (left.value == LLVMAbortedValue) right.value else left.value
+      val sacc = LLVMBuildMul(builder, buildContext.sacc.get, realVal, "mul")
+      val macc = LLVMBuildMul(builder, buildContext.macc.get, realVal, "mul")
+      buildContext.sacc = Some(sacc)
+      buildContext.macc = Some(macc)
+      new Value(Primitives.INT, LLVMAbortedValue)
+    } else {
+      val result = ctx.MULDIV.getSymbol.getText match {
+        case "*" =>
+          LLVMBuildMul(builder, left.value, right.value, "mul")
+        case "/" =>
+          LLVMBuildSDiv(builder, left.value, right.value, "div")
+        case "%" =>
+          LLVMBuildSRem(builder, left.value, right.value, "mod")
+      }
+      new Value(Primitives.INT, result)
     }
-    new Value(Primitives.INT, result)
   }
 
   def sign(ctx: SignedExprContext): Value = {
@@ -67,8 +78,8 @@ class Ariphmetics(val buildContext: BuildContext) {
     val zero = LLVMConstInt(LLVMInt32Type(), 0, 0)
     if (value.value == LLVMAbortedValue) {
       if (ctx.SIGN.getSymbol.getText == "-") {
-        val acc = LLVMBuildSub(builder, zero, buildContext.acc.get, "sub")
-        buildContext.acc = Some(acc)
+        val acc = LLVMBuildSub(builder, zero, buildContext.sacc.get, "sub")
+        buildContext.sacc = Some(acc)
       }
       new Value(value.valType, LLVMAbortedValue)
     } else {

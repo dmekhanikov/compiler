@@ -39,8 +39,10 @@ class FunctionDefinitions(val buildContext: BuildContext) {
     val prevBlock = LLVMGetPreviousBasicBlock(functionStart)
     LLVMBuildBr(builder, functionStart)
     LLVMPositionBuilderAtEnd(builder, functionStart)
-    buildContext.accPhi = Some(LLVMBuildPhi(builder, LLVMInt32Type, "accPhi"))
-    LLVMAddIncoming(buildContext.accPhi.get, LLVMConstInt(LLVMInt32Type, 0, 0), prevBlock, 1)
+    buildContext.saccPhi = Some(LLVMBuildPhi(builder, LLVMInt32Type, "saccPhi"))
+    LLVMAddIncoming(buildContext.saccPhi.get, LLVMConstInt(LLVMInt32Type, 0, 0), prevBlock, 1)
+    buildContext.maccPhi = Some(LLVMBuildPhi(builder, LLVMInt32Type, "maccPhi"))
+    LLVMAddIncoming(buildContext.maccPhi.get, LLVMConstInt(LLVMInt32Type, 1, 0), prevBlock, 1)
     if (parameterListCtx.isDefined) {
       for ((parCtx, i) <- parameterListCtx.get.parameter.zipWithIndex) {
         val typeName = parCtx.ID(0).getText
@@ -108,7 +110,8 @@ class FunctionDefinitions(val buildContext: BuildContext) {
         throw new CompilationException(ctx, "this function may never terminate")
       }
       if (exprValue.valType == Primitives.INT) {
-        val sum = LLVMBuildAdd(builder, buildContext.accPhi.get, exprValue.value, "add")
+        val mul = LLVMBuildMul(builder, buildContext.maccPhi.get, exprValue.value, "mull")
+        val sum = LLVMBuildAdd(builder, buildContext.saccPhi.get, mul, "add")
         exprValue = new Value(exprValue.valType, sum)
       }
       val returned = buildContext.cast(exprValue, returnType, ctx.expression)
