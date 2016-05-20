@@ -14,6 +14,9 @@
     - private and public members
     - constructors
     - inheritance
+- tail recursion elimination
+    - implicit tail calls
+    - integer recursive computations
 - LLVM code generation
 
 ## Build
@@ -34,6 +37,16 @@ int power(int x, int y) {
         y = y / 2;
     }
     result
+}
+```
+Calculation of a sum of numbers in a range:
+```c
+int sum(int a, int b) {
+    if (a < b) {
+        b + sum(a, b - 1)
+    } else {
+        0
+    }
 }
 ```
 Structure of a rectangle:
